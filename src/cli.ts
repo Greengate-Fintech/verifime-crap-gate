@@ -1,5 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'fs'
 import path from 'path'
+import { DEFAULT_CONFIG, loadConfig } from './config'
+import type { CrapConfig } from './config'
 import { measure } from './measure'
 import {
   BASELINE_DISPLAY,
@@ -47,6 +49,8 @@ export interface MeasureOptions {
   acceptUnmatched: boolean
   outPath: string
   repoRoot: string
+  /** Scope, anchors, extensions, exclude and threshold; the defaults when absent. */
+  config?: CrapConfig
 }
 
 export interface Io {
@@ -71,8 +75,8 @@ const readJson = <T>(file: string, what: string): T => {
   }
 }
 
-export const summarise = (m: Measurement): CrapSummary => {
-  const over = m.functions.filter((f) => f.crap > CRAP_THRESHOLD)
+export const summarise = (m: Measurement, threshold: number = CRAP_THRESHOLD): CrapSummary => {
+  const over = m.functions.filter((f) => f.crap > threshold)
   return {
     functions: m.functions.length,
     over5: over.length,
@@ -149,12 +153,12 @@ const resolveUnmatched = (m: Measurement, opts: MeasureOptions): Outcome => {
   return { measurement: { functions, unmatched: failing, problems: m.problems }, listed, stale, accepted: opts.acceptUnmatched }
 }
 
-const compute = (opts: MeasureOptions): Outcome => {
+const compute = (opts: MeasureOptions, config: CrapConfig): Outcome => {
   const eslint = readJson<EslintFileResult[]>(opts.eslintPath, 'ESLint')
   const coverage = readCoverage(opts.coveragePaths)
   // ESLint and Istanbul report real paths, so a symlinked root (macOS /tmp -> /private/tmp)
   // must be resolved before joining, or every path would fall outside the root.
-  return resolveUnmatched(measure(eslint, coverage, realpathSync(opts.repoRoot)), opts)
+  return resolveUnmatched(measure(eslint, coverage, realpathSync(opts.repoRoot), undefined, config), opts)
 }
 
 /** Returns the process exit code. Fails closed: missing input, nothing measured, any problem or any unmatched function is 1. */
@@ -162,8 +166,9 @@ export const runMeasure = (opts: MeasureOptions, io: Io): number => {
   try {
     // A failed run must never leave a previous run's report behind for a later step to trust.
     rmSync(opts.outPath, { force: true })
-    const outcome = compute(opts)
-    const summary = summarise(outcome.measurement)
+    const config = opts.config ?? DEFAULT_CONFIG
+    const outcome = compute(opts, config)
+    const summary = summarise(outcome.measurement, config.threshold)
     writeReport(opts.outPath, outcome, summary)
     // Failure detail first so the summary line is the last thing printed, as in a passing run.
     const problems = failures(outcome.measurement, outcome.stale)
@@ -180,6 +185,8 @@ export interface CheckOptions {
   reportPath: string
   baselinePath: string
   githubActions: boolean
+  /** The offender threshold; the default when absent. */
+  threshold?: number
 }
 
 export interface BaselineOptions {
@@ -187,6 +194,8 @@ export interface BaselineOptions {
   baselinePath: string
   unmatchedListPath: string
   allowGrowth: boolean
+  /** The offender threshold; the default when absent. */
+  threshold?: number
 }
 
 const STALE_UNMATCHED_ADVICE = `delete this line from ${UNMATCHED_DISPLAY}, or run npm run crap:baseline`
@@ -334,7 +343,7 @@ export const runCheck = (opts: CheckOptions, io: Io): number => {
     refuseAcceptedReport(opts.reportPath)
     const functions = readFunctions(opts.reportPath)
     const baseline = readBaseline(opts.baselinePath)
-    const violations = evaluateRatchet(baseline, groupScores(functions))
+    const violations = evaluateRatchet(baseline, groupScores(functions), opts.threshold)
     if (violations.length > 0) {
       reportViolations(violations, functions, opts.githubActions, io)
       return 1
@@ -366,7 +375,7 @@ const refuse = (baselineRefused: Violation[], listRefused: StaleUnmatched[], io:
 export const runBaseline = (opts: BaselineOptions, io: Io): number => {
   try {
     const current = groupScores(readFunctions(opts.reportPath))
-    const plan = planBaselineUpdate(readExistingBaseline(opts.baselinePath), current, opts.allowGrowth)
+    const plan = planBaselineUpdate(readExistingBaseline(opts.baselinePath), current, opts.allowGrowth, opts.threshold)
     const listed = groupUnmatched(readListedUnmatched(opts.reportPath))
     const listPlan = planUnmatchedUpdate(readExistingList(opts.unmatchedListPath), listed, opts.allowGrowth)
     if (plan.refused.length > 0 || listPlan.refused.length > 0) {
@@ -471,7 +480,6 @@ export const runBaselineDiff = (opts: DiffOptions, io: Io): number => {
   }
 }
 
-const DEFAULT_COVERAGE = ['coverage/coverage-final.json', 'cdk/coverage/coverage-final.json']
 const REPORT_PATH = 'coverage/crap-report.json'
 const BASELINE_PATH = 'crap/baseline.tsv'
 const UNMATCHED_PATH = 'crap/unmatched.tsv'
@@ -535,10 +543,10 @@ const readMeasureFlags = (flags: string[]): MeasureFlags | string => {
   return found
 }
 
-const parseMeasure = (flags: string[]): ParsedArgs => {
+const parseMeasure = (flags: string[], config: CrapConfig): ParsedArgs => {
   const found = readMeasureFlags(flags)
   if (typeof found === 'string') return usage(found)
-  const coveragePaths = found.coveragePaths.length > 0 ? found.coveragePaths : DEFAULT_COVERAGE
+  const coveragePaths = found.coveragePaths.length > 0 ? found.coveragePaths : config.coverage
   return { command: 'measure', coveragePaths, acceptUnmatched: found.acceptUnmatched }
 }
 
@@ -589,49 +597,70 @@ const parseBoolFlags = (command: string, flags: string[], env: Env): ParsedArgs 
   return unknown === undefined ? build(command, flags, env) : usage(`Unknown flag for ${command}: ${unknown}`)
 }
 
-const parseKnown = (command: string, flags: string[], env: Env): ParsedArgs => {
+const parseKnown = (command: string, flags: string[], env: Env, config: CrapConfig): ParsedArgs => {
   if (command === 'diff') return parseDiff(flags, env)
-  return command === 'measure' ? parseMeasure(flags) : parseBoolFlags(command, flags, env)
+  return command === 'measure' ? parseMeasure(flags, config) : parseBoolFlags(command, flags, env)
 }
 
-export const parseArgs = (argv: string[], env: Env): ParsedArgs => {
+/** A `--coverage` flag overrides the config's coverage files, which override the defaults. */
+export const parseArgs = (argv: string[], env: Env, config: CrapConfig = DEFAULT_CONFIG): ParsedArgs => {
   const [command = '', ...flags] = argv
   if (!COMMANDS.includes(command)) return usage(`Unknown or missing subcommand: ${command || '(none)'}`)
-  return parseKnown(command, flags, env)
+  return parseKnown(command, flags, env, config)
 }
 
-const runUsage = (message: string): number => {
-  console.error(message)
-  return 1
-}
-
-const measureOptions = (args: { coveragePaths: string[]; acceptUnmatched: boolean }): MeasureOptions => ({
+const measureOptions = (
+  args: { coveragePaths: string[]; acceptUnmatched: boolean },
+  config: CrapConfig,
+  repoRoot: string,
+): MeasureOptions => ({
   eslintPath: 'coverage/crap-eslint.json',
   coveragePaths: args.coveragePaths,
   unmatchedListPath: UNMATCHED_PATH,
   acceptUnmatched: args.acceptUnmatched,
   outPath: REPORT_PATH,
-  repoRoot: process.cwd(),
+  repoRoot,
+  config,
 })
 
-const run = (args: ParsedArgs): number => {
+const run = (args: ParsedArgs, config: CrapConfig, repoRoot: string, io: Io): number => {
   switch (args.command) {
     case 'measure':
-      return runMeasure(measureOptions(args), console)
+      return runMeasure(measureOptions(args, config, repoRoot), io)
     case 'check':
-      return runCheck({ reportPath: REPORT_PATH, baselinePath: BASELINE_PATH, githubActions: args.githubActions }, console)
+      return runCheck(
+        { reportPath: REPORT_PATH, baselinePath: BASELINE_PATH, githubActions: args.githubActions, threshold: config.threshold },
+        io,
+      )
     case 'baseline':
       return runBaseline(
-        { reportPath: REPORT_PATH, baselinePath: BASELINE_PATH, unmatchedListPath: UNMATCHED_PATH, allowGrowth: args.allowGrowth },
-        console,
+        {
+          reportPath: REPORT_PATH,
+          baselinePath: BASELINE_PATH,
+          unmatchedListPath: UNMATCHED_PATH,
+          allowGrowth: args.allowGrowth,
+          threshold: config.threshold,
+        },
+        io,
       )
     case 'diff':
-      return runBaselineDiff(args, console)
+      return runBaselineDiff(args, io)
     default:
-      return runUsage(args.message)
+      io.error(args.message)
+      return 1
   }
 }
 
-const main = (argv: string[]): number => run(parseArgs(argv, process.env))
+/** Loads `crap/config.json` from `cwd` first: an invalid config is exit 1 before any command runs. */
+export const runCli = (argv: string[], env: Env, cwd: string, io: Io): number => {
+  let config: CrapConfig
+  try {
+    config = loadConfig(cwd)
+  } catch (e) {
+    io.error(e instanceof Error ? e.message : String(e))
+    return 1
+  }
+  return run(parseArgs(argv, env, config), config, cwd, io)
+}
 
-if (require.main === module) process.exit(main(process.argv.slice(2)))
+if (require.main === module) process.exit(runCli(process.argv.slice(2), process.env, process.cwd(), console))

@@ -208,26 +208,33 @@ const planPair = (
   key: string,
   [frozen, current]: [number, number],
   allowGrowth: boolean,
+  threshold: number,
 ): { kept: number | null; refused: Violation | null } => {
   if (!isRegression(frozen, current, REGRESSION_TOLERANCE)) {
     const kept = Math.min(frozen, current)
-    return { kept: current > CRAP_THRESHOLD ? kept : null, refused: null }
+    return { kept: current > threshold ? kept : null, refused: null }
   }
   if (allowGrowth) return { kept: current, refused: null }
   return { kept: frozen, refused: regressionViolation(key, frozen, current) }
 }
 
-const planKey = (key: string, frozen: number[], current: number[], allowGrowth: boolean): KeyPlan => {
+const planKey = (
+  key: string,
+  frozen: number[],
+  current: number[],
+  allowGrowth: boolean,
+  threshold: number,
+): KeyPlan => {
   const { unmatchedCurrent, pairs } = pair(frozen, current)
-  const planned = pairs.map((p) => planPair(key, p, allowGrowth))
-  const growth = unmatchedCurrent.filter((c) => c > CRAP_THRESHOLD)
+  const planned = pairs.map((p) => planPair(key, p, allowGrowth, threshold))
+  const growth = unmatchedCurrent.filter((c) => c > threshold)
   const kept = [
     ...planned.map((p) => p.kept).filter((s): s is number => s !== null),
     ...(allowGrowth ? growth : []),
   ]
   const refused = [
     ...planned.map((p) => p.refused).filter((v): v is Violation => v !== null),
-    ...(allowGrowth ? [] : growth.map((c) => newViolation(key, c, CRAP_THRESHOLD))),
+    ...(allowGrowth ? [] : growth.map((c) => newViolation(key, c, threshold))),
   ]
   return { kept: kept.sort(ascending), refused }
 }
@@ -237,10 +244,11 @@ const applyPlans = (
   frozen: ScoreGroups,
   current: ScoreGroups,
   allowGrowth: boolean,
+  threshold: number,
 ): { baseline: ScoreGroups; refused: Violation[] } => {
   const plans = keys.map((key) => ({
     key,
-    plan: planKey(key, frozen.get(key) ?? [], current.get(key) ?? [], allowGrowth),
+    plan: planKey(key, frozen.get(key) ?? [], current.get(key) ?? [], allowGrowth, threshold),
   }))
   const kept = plans.filter(({ plan }) => plan.kept.length > 0)
   return {
@@ -253,10 +261,11 @@ export const planBaselineUpdate = (
   existing: ScoreGroups | null,
   current: ScoreGroups,
   allowGrowth: boolean,
+  threshold: number = CRAP_THRESHOLD,
 ): { baseline: ScoreGroups; refused: Violation[] } => {
   // With no existing baseline there is nothing to ratchet against: freeze every offender.
   const permit = allowGrowth || existing === null
-  return applyPlans([...current.keys()].sort(), existing ?? new Map(), current, permit)
+  return applyPlans([...current.keys()].sort(), existing ?? new Map(), current, permit, threshold)
 }
 
 const growthOf = (key: string, base: number[], head: number[], tolerance: number): GrowthRow[] => {

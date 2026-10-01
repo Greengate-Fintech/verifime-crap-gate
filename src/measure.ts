@@ -1,5 +1,7 @@
 import { readFileSync, realpathSync } from 'fs'
 import path from 'path'
+import { DEFAULT_CONFIG } from './config'
+import type { CrapConfig } from './config'
 import { crapScore, functionCoverage, rawFunctionCoverage, toSpan } from './score'
 import type { Position, Span } from './score'
 import type {
@@ -24,7 +26,6 @@ type LineAt = (lineNumber: number) => string
 const ANONYMOUS = '(anonymous)'
 const MATCH_LOOK_AHEAD_LINES = 8
 const NAME_LOOK_BACK_LINES = 8
-const ANCHOR_SEGMENTS = new Set(['src', 'lib', 'bin', 'cdk'])
 
 const EXCLUDE =
   /(^|\/)(__tests__|__mocks__|__fixtures__|test|tests|e2e|fixtures|mocks|node_modules|generated|\.storybook|coverage|dist|build|cdk\.out|\.next)\/|\.(test|spec|stories|mock|d)\.[cm]?[tj]sx?$|(^|\/)[^/]*\.config\.[cm]?[tj]s$|(^|\/)(test-utils|testUtils|setupTests)\./
@@ -52,20 +53,48 @@ const GUESS_PATTERNS: ReadonlyArray<readonly [RegExp, string]> = [
 // Scope and path mapping
 // ---------------------------------------------------------------------------------------
 
-// `.ts` only: cdk has no tsc outDir, so a compiled `.js` twin can sit beside every source.
-export const isInScope = (relPath: string): boolean =>
-  /^(?:cdk\/)?(?:src|lib|bin)\/.*\.ts$/.test(relPath) && !EXCLUDE.test(relPath)
+/** The scope, extension, exclude and anchor rules compiled from a config. */
+export interface ScopeRules {
+  inScope: (relPath: string) => boolean
+  anchors: ReadonlySet<string>
+}
+
+type ScopeConfig = Pick<CrapConfig, 'scope' | 'anchors' | 'extensions' | 'exclude'>
+
+const isExcluded = (relPath: string, extra: readonly RegExp[]): boolean =>
+  EXCLUDE.test(relPath) || extra.some((re) => re.test(relPath))
+
+// The default config measures `.ts` only: cdk has no tsc outDir, so a compiled `.js` twin can
+// sit beside every source. The built-in exclude always applies; configured patterns add to it.
+export const compileScope = (config: ScopeConfig): ScopeRules => {
+  const extra = config.exclude.map((source) => new RegExp(source))
+  const inDirectory = (rel: string): boolean => config.scope.some((dir) => rel.startsWith(`${dir}/`))
+  const hasExtension = (rel: string): boolean => config.extensions.some((ext) => rel.endsWith(ext))
+  return {
+    inScope: (rel) => inDirectory(rel) && hasExtension(rel) && !isExcluded(rel, extra),
+    anchors: new Set(config.anchors),
+  }
+}
+
+const DEFAULT_RULES = compileScope(DEFAULT_CONFIG)
+
+export const isInScope = (relPath: string, rules: ScopeRules = DEFAULT_RULES): boolean =>
+  rules.inScope(relPath)
 
 const toPosix = (p: string): string => p.split(path.sep).join('/')
 
 const isInside = (rel: string): boolean =>
   rel !== '..' && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel)
 
-/** Suffixes start at each src/lib/bin/cdk segment, tried from the last such segment backwards. */
-const matchMeasuredSuffix = (key: string, measured: ReadonlySet<string>): string | null => {
+/** Suffixes start at each anchor segment, tried from the last such segment backwards. */
+const matchMeasuredSuffix = (
+  key: string,
+  measured: ReadonlySet<string>,
+  anchors: ReadonlySet<string>,
+): string | null => {
   const segments = key.split(/[\\/]/)
   for (let i = segments.length - 1; i >= 0; i--) {
-    if (!ANCHOR_SEGMENTS.has(segments[i])) continue
+    if (!anchors.has(segments[i])) continue
     const suffix = segments.slice(i).join('/')
     if (measured.has(suffix)) return suffix
   }
@@ -79,21 +108,23 @@ export const toRepoRelative = (
   coverageKey: string,
   repoRoot: string,
   measured: ReadonlySet<string>,
+  anchors: ReadonlySet<string> = DEFAULT_RULES.anchors,
 ): string | null => {
   const rel = path.relative(repoRoot, path.resolve(repoRoot, coverageKey))
   if (isInside(rel)) return toPosix(rel)
   // A dependency's own src/lib/bin folder must never be mistaken for the repo's.
-  return hasNodeModulesSegment(coverageKey) ? null : matchMeasuredSuffix(coverageKey, measured)
+  return hasNodeModulesSegment(coverageKey) ? null : matchMeasuredSuffix(coverageKey, measured, anchors)
 }
 
 const groupCoverageByFile = (
   coverage: Record<string, IstanbulFileCoverage>,
   repoRoot: string,
   measured: ReadonlySet<string>,
+  anchors: ReadonlySet<string>,
 ): Map<string, IstanbulFileCoverage[]> => {
   const byFile = new Map<string, IstanbulFileCoverage[]>()
   for (const [key, entry] of Object.entries(coverage)) {
-    const rel = toRepoRelative(key, repoRoot, measured)
+    const rel = toRepoRelative(key, repoRoot, measured, anchors)
     if (rel === null) continue
     byFile.set(rel, [...(byFile.get(rel) ?? []), entry])
   }
@@ -319,21 +350,22 @@ const realPathOf = (abs: string): string => {
   }
 }
 
-const inScopeFiles = (eslint: EslintFileResult[], repoRoot: string): FileInput[] =>
+const inScopeFiles = (eslint: EslintFileResult[], repoRoot: string, rules: ScopeRules): FileInput[] =>
   eslint
     .map((f) => {
       const abs = realPathOf(path.resolve(repoRoot, f.filePath))
       return { rel: toPosix(path.relative(repoRoot, abs)), abs, messages: f.messages }
     })
-    .filter((f) => isInScope(f.rel))
+    .filter((f) => rules.inScope(f.rel))
 
 const uncoveredByEslint = (
   byFile: ReadonlyMap<string, IstanbulFileCoverage[]>,
   files: FileInput[],
+  rules: ScopeRules,
 ): MeasureProblem[] => {
   const linted = new Set(files.map((f) => f.rel))
   return [...byFile.keys()]
-    .filter((rel) => isInScope(rel) && !linted.has(rel))
+    .filter((rel) => rules.inScope(rel) && !linted.has(rel))
     .map((file) => ({ file, message: 'Has coverage but no ESLint result: was it linted?' }))
 }
 
@@ -342,10 +374,12 @@ export const measure = (
   coverage: Record<string, IstanbulFileCoverage>,
   repoRoot: string,
   readSource: ReadSource = readSourceSafely,
+  config: ScopeConfig = DEFAULT_CONFIG,
 ): Measurement => {
-  const files = inScopeFiles(eslint, repoRoot)
-  const byFile = groupCoverageByFile(coverage, repoRoot, new Set(files.map((f) => f.rel)))
-  const out: Measurement = { functions: [], unmatched: [], problems: uncoveredByEslint(byFile, files) }
+  const rules = compileScope(config)
+  const files = inScopeFiles(eslint, repoRoot, rules)
+  const byFile = groupCoverageByFile(coverage, repoRoot, new Set(files.map((f) => f.rel)), rules.anchors)
+  const out: Measurement = { functions: [], unmatched: [], problems: uncoveredByEslint(byFile, files, rules) }
   for (const file of files) measureFile(file, byFile.get(file.rel) ?? [], readSource, out)
   return out
 }
