@@ -19,6 +19,7 @@ Score impact: neutral
 - A bundled CLI, `dist/cli.cjs` (`bin` `crap-gate`), usable with `npx github:Greengate-Fintech/verifime-crap-gate#<tag>`. ESLint, typescript-eslint and TypeScript are bundled, so a consumer needs none of them. `dist/THIRD-PARTY-LICENSES.txt` lists the bundled packages and their licences.
 - `--config <path>` on every command, and `baseline --output-dir <dir>` to write the regenerated files elsewhere than `crap/`. With neither flag, behaviour is unchanged.
 - CI jobs `Rebuild dist`, `Action end to end` and `npx from git`.
+- Lint results are sorted by file path, as the ESLint CLI sorts them, so the report and the failure lines follow the original order. A directory in an explicitly configured `scope` that does not exist is now an error (exit 1); absent directories of the default scope are still skipped.
 - The action prefixes `::error` annotation paths with a non-root `working-directory`, and warns when `output-dir` or `base` is given to a mode that ignores it. Its `summary` output, for a non-zero exit, is the last error line that is not an annotation.
 - The build fails on any esbuild warning or on a bundled package with no licence text, and writes `dist/` only after a full success. Licence texts for packages that ship none live in `licence-texts.mjs`.
 

@@ -70,7 +70,7 @@ The gate runs ESLint through its Node API. It does not read your ESLint config a
 - files matched by `extensions` only (`.ts` by default), so a compiled `.js` file beside its `.ts` source reports no function;
 - ignored: files under `node_modules`, `dist`, `coverage` and `cdk.out` folders, and `*.d.ts` files.
 
-A scope directory that does not exist is skipped. When none exists, nothing is measured and the run exits 1 with `No functions were measured`.
+A directory of the default scope that does not exist is skipped. A directory in a `scope` that your config sets must exist: a missing one, or one that is a file, exits 1 with `Invalid <config file>: key "scope" entry "<dir>" is not an existing directory`. When no scope directory exists, nothing is measured and the run exits 1 with `No functions were measured`.
 
 ## Commands
 
@@ -244,7 +244,7 @@ The package's `bin` is `crap-gate`, which is `dist/cli.cjs`.
 
 `dist/cli.cjs` and `dist/action.cjs` are committed. `npm run build` produces them, with esbuild, from `src/`:
 
-- `dist/cli.cjs` bundles the gate, ESLint, typescript-eslint and TypeScript. It requires nothing but Node built-ins, so it never resolves a module from the project it measures. A project with a different TypeScript, its own ESLint or its own ESLint config gets the same result.
+- `dist/cli.cjs` bundles the gate, ESLint, typescript-eslint and TypeScript. It has no static `require` of a module that is not a Node built-in. ESLint and TypeScript keep dynamic loading sites (`require`, `import()`, `createRequire`) in the bundle, and the gate's options never reach them: it does no config lookup and loads no plugins. So it never resolves a module from the project it measures. A project with a different TypeScript, its own ESLint or its own ESLint config gets the same result.
 - `dist/action.cjs` is the action entry. It requires `./cli.cjs`, so the toolchain is bundled once.
 - `dist/THIRD-PARTY-LICENSES.txt` lists every package bundled into the CLI, with its version and licence text.
 
@@ -266,7 +266,7 @@ This repository runs its own gate on `src`, with `crap/config.json`, `crap/basel
 
 Run the same locally with `npm run test:coverage && npm run crap:check`.
 
-Three more CI jobs prove the bundle: `Rebuild dist` (a clean build equals the committed `dist/`), `Action end to end` (the action from this checkout, all four modes, against the synthetic project in `test/e2e/project`, with a negative case that must fail) and `npx from git` (the pushed commit, run through `npx` in a clean directory).
+Three more CI jobs prove the bundle: `Rebuild dist` (a clean build equals the committed `dist/`), `Action end to end` (on x64 and arm64: the action from this checkout, all four modes, against the synthetic project in `test/e2e/project`, with a negative case that must fail) and `npx from git` (the pushed commit, run through `npx` in a clean directory).
 
 See `CLAUDE.md` for the rules this public repository follows.
 

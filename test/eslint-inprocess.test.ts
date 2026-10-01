@@ -2,9 +2,11 @@ import { execFileSync } from 'child_process'
 import { pathToFileURL } from 'url'
 import path from 'path'
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_CONFIG } from '../src/config'
+import { runCli } from '../src/cli'
+import { DEFAULT_CONFIG, parseConfig } from '../src/config'
 import { buildEslintConfig, lintScope, lintTargets } from '../src/eslint'
-import { readFixture, tempRoot, writeFileIn } from './helpers/sandbox'
+import { readFileSync } from 'fs'
+import { cc3Coverage, CC3_SOURCE, inDirectory, makeIo, readFixture, tempRoot, writeFileIn } from './helpers/sandbox'
 
 const SAMPLE = readFixture('sample.ts')
 const TSESLINT_PATH = require.resolve('typescript-eslint')
@@ -170,3 +172,80 @@ describe('lintTargets', () => {
     expect(await lintScope(tempRoot('crap-none'), DEFAULT_CONFIG)).toEqual([])
   })
 })
+
+// ESLint's own CLI sorts results by file path before it formats them, so the original gate's
+// report followed that order. The Node API returns them in pattern and walk order.
+describe('result order equals the ESLint CLI order', () => {
+  const FILES = ['src/a-b.ts', 'src/a/b.ts', 'src/Z.ts', 'cdk/lib/z.ts', 'cdk/lib/A.ts']
+
+  const orderRoot = (): string => {
+    const root = tempRoot('crap-order')
+    for (const file of FILES) writeFileIn(root, file, CC3_SOURCE)
+    return root
+  }
+
+  it('sorts by file path, as the live CLI does, for a scope whose walk order differs', async () => {
+    const root = orderRoot()
+    const config = { ...DEFAULT_CONFIG, scope: ['src', 'cdk/lib'] }
+    const cliConfig = writeCliConfig(tempRoot('crap-cli-config'), config.extensions)
+    const stdout = execFileSync(process.execPath, [ESLINT_BIN, '--no-config-lookup', '-c', cliConfig, '-f', 'json', 'src', 'cdk/lib'], {
+      cwd: root,
+      encoding: 'utf8',
+    })
+    const cliOrder = (JSON.parse(stdout) as { filePath: string }[]).map((r) => path.relative(root, r.filePath).split(path.sep).join('/'))
+    const ours = (await lintScope(root, config)).map((r) => path.relative(root, r.filePath).split(path.sep).join('/'))
+    expect(ours).toEqual(cliOrder)
+    expect(cliOrder[0]).toBe('cdk/lib/A.ts')
+  })
+
+  it('writes the report functions in that order', async () => {
+    const root = orderRoot()
+    writeFileIn(root, 'crap/config.json', JSON.stringify({ scope: ['src', 'cdk/lib'], coverage: ['coverage/coverage-final.json'] }))
+    const coverage = Object.assign({}, ...FILES.map((f) => JSON.parse(cc3Coverage(path.join(root, f)))))
+    writeFileIn(root, 'coverage/coverage-final.json', JSON.stringify(coverage))
+    const out = makeIo()
+    expect(await inDirectory(root, () => runCli(['measure'], {}, root, out.io))).toBe(0)
+    const report = JSON.parse(readFileSync(path.join(root, 'coverage/crap-report.json'), 'utf8')) as { functions: { file: string }[] }
+    expect(report.functions.map((f) => f.file)).toEqual([...FILES].sort((a, b) => (path.join(root, a) < path.join(root, b) ? -1 : 1)))
+  })
+})
+
+describe('an explicit scope must exist', () => {
+  const run = async (root: string) => {
+    const out = makeIo()
+    const code = await inDirectory(root, () => runCli(['measure'], {}, root, out.io))
+    return { code, errors: out.errors, logs: out.logs }
+  }
+
+  const project = (config: Record<string, unknown>): string => {
+    const root = tempRoot('crap-explicit')
+    writeFileIn(root, 'src/busy.ts', CC3_SOURCE)
+    writeFileIn(root, 'coverage/coverage-final.json', cc3Coverage(path.join(root, 'src/busy.ts')))
+    writeFileIn(root, 'crap/config.json', JSON.stringify({ coverage: ['coverage/coverage-final.json'], ...config }))
+    return root
+  }
+
+  it('fails, naming the directory and the config file, when a configured scope directory is missing', async () => {
+    const r = await run(project({ scope: ['src', 'packages/nope'] }))
+    expect(r.code).toBe(1)
+    expect(r.errors).toEqual(['Invalid crap/config.json: key "scope" entry "packages/nope" is not an existing directory'])
+    expect(r.logs).toEqual([])
+  })
+
+  it('fails for a configured scope entry that is a file', async () => {
+    const root = project({ scope: ['src', 'afile'] })
+    writeFileIn(root, 'afile', 'x')
+    expect((await run(root)).errors).toEqual(['Invalid crap/config.json: key "scope" entry "afile" is not an existing directory'])
+  })
+
+  it('still skips absent directories of the default scope', async () => {
+    const r = await run(project({}))
+    expect(r.code).toBe(0)
+  })
+
+  it('carries where an explicit scope came from, and nothing for the default', () => {
+    expect(parseConfig('{"scope":["src"]}', 'conf/x.json').scopeFrom).toBe('conf/x.json')
+    expect(parseConfig('{}').scopeFrom).toBeUndefined()
+  })
+})
+

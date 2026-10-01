@@ -38,8 +38,28 @@ const isDirectory = (dir: string): boolean => {
 export const lintTargets = (repoRoot: string, scope: readonly string[]): string[] =>
   scope.filter((dir) => isDirectory(path.join(repoRoot, dir)))
 
-/** Lints the scope directories that exist. With none, it lints nothing, and the measure then fails closed. */
+/** A scope the consumer set must exist: the ESLint CLI failed on a missing pattern, so a typo must not shrink the measure silently. */
+const assertScopeExists = (repoRoot: string, config: CrapConfig): void => {
+  if (config.scopeFrom === undefined) return
+  const missing = config.scope.find((dir) => !isDirectory(path.join(repoRoot, dir)))
+  if (missing !== undefined) {
+    throw new Error(`Invalid ${config.scopeFrom}: key "scope" entry ${JSON.stringify(missing)} is not an existing directory`)
+  }
+}
+
+/** The order the ESLint CLI gives its results (`compareResultsByFilePath`): plain `<` and `>` on the path. */
+const byFilePath = (a: ESLint.LintResult, b: ESLint.LintResult): number => {
+  if (a.filePath < b.filePath) return -1
+  return a.filePath > b.filePath ? 1 : 0
+}
+
+/**
+ * Lints the scope directories that exist (all of them must, for a scope the config set). With
+ * none, it lints nothing, and the measure then fails closed. Results are sorted by file path,
+ * as the ESLint CLI sorts them before it formats a report.
+ */
 export const lintScope = async (repoRoot: string, config: CrapConfig): Promise<ESLint.LintResult[]> => {
+  assertScopeExists(repoRoot, config)
   const targets = lintTargets(repoRoot, config.scope)
   if (targets.length === 0) return []
   const eslint = new ESLint({
@@ -48,5 +68,5 @@ export const lintScope = async (repoRoot: string, config: CrapConfig): Promise<E
     overrideConfig: buildEslintConfig(config.extensions),
     errorOnUnmatchedPattern: false,
   })
-  return eslint.lintFiles(targets)
+  return (await eslint.lintFiles(targets)).sort(byFilePath)
 }

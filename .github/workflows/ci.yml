@@ -72,8 +72,16 @@ jobs:
           test -z "$untracked" || { echo "dist differs from a clean build:"; echo "$untracked"; exit 1; }
 
   action-e2e:
-    name: Action end to end
-    runs-on: ubuntu-24.04
+    name: Action end to end (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
     env:
       PROJECT: test/e2e/project
     steps:

@@ -18,6 +18,8 @@ export interface CrapConfig {
   readonly coverage: readonly string[]
   /** A function scoring above this is an offender. */
   readonly threshold: number
+  /** The config file that set `scope`; absent when `scope` is the default, whose missing directories are skipped. */
+  readonly scopeFrom?: string
 }
 
 export const CONFIG_DISPLAY = 'crap/config.json'
@@ -72,7 +74,10 @@ const thresholdCheck: Check = (value) =>
     ? null
     : 'key "threshold" must be a number greater than 0'
 
-const CHECKS: Record<keyof CrapConfig, Check> = {
+/** The keys a config file may set; `scopeFrom` is derived, never read from the file. */
+type FileKey = Exclude<keyof CrapConfig, 'scopeFrom'>
+
+const CHECKS: Record<FileKey, Check> = {
   scope: listOf('scope', false, isDirectory, 'must be a repo-relative directory'),
   anchors: listOf('anchors', false, (s) => s !== '' && !/[\\/]/.test(s), 'must be one path segment name'),
   extensions: listOf('extensions', false, (s) => /^\.[^./\\]+(\.[^./\\]+)*$/.test(s), 'must start with a dot, as in ".ts"'),
@@ -81,7 +86,7 @@ const CHECKS: Record<keyof CrapConfig, Check> = {
   threshold: thresholdCheck,
 }
 
-const isKey = (key: string): key is keyof CrapConfig => Object.hasOwn(CHECKS, key)
+const isKey = (key: string): key is FileKey => Object.hasOwn(CHECKS, key)
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -107,9 +112,10 @@ const validate = (raw: Record<string, unknown>, display: string): void => {
   }
 }
 
-const withDefaults = (raw: Record<string, unknown>): CrapConfig => {
+const withDefaults = (raw: Record<string, unknown>, display: string): CrapConfig => {
   const merged = { ...DEFAULT_CONFIG, ...raw } as CrapConfig
-  return { ...merged, scope: merged.scope.map(trimSlashes) }
+  const scoped = { ...merged, scope: merged.scope.map(trimSlashes) }
+  return 'scope' in raw ? { ...scoped, scopeFrom: display } : scoped
 }
 
 /** Throws an Error naming the file and the key when the text is not a valid config. `display` names the file in messages. */
@@ -117,7 +123,7 @@ export const parseConfig = (text: string, display: string = CONFIG_DISPLAY): Cra
   const raw = parseJson(text, display)
   if (!isPlainObject(raw)) throw invalid('must be a JSON object', display)
   validate(raw, display)
-  return withDefaults(raw)
+  return withDefaults(raw, display)
 }
 
 const isMissing = (e: unknown): boolean => (e as NodeJS.ErrnoException).code === 'ENOENT'
