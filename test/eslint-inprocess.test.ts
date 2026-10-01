@@ -1,11 +1,27 @@
 import { execFileSync } from 'child_process'
+import { pathToFileURL } from 'url'
 import path from 'path'
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_CONFIG } from '../src/config'
-import { lintScope, lintTargets } from '../src/eslint'
-import { FIXTURES, readFixture, tempRoot, writeFileIn } from './helpers/sandbox'
+import { buildEslintConfig, lintScope, lintTargets } from '../src/eslint'
+import { readFixture, tempRoot, writeFileIn } from './helpers/sandbox'
 
 const SAMPLE = readFixture('sample.ts')
+const TSESLINT_PATH = require.resolve('typescript-eslint')
+
+/**
+ * A config file for the real eslint binary, generated from `buildEslintConfig` so that the two
+ * cannot drift. Only the parser, which is an object and not data, is written out by hand.
+ */
+const writeCliConfig = (dir: string, extensions: readonly string[]): string => {
+  const marker = '__PARSER__'
+  const config = buildEslintConfig(extensions)
+  const json = JSON.stringify(config, (_key, value) => (_key === 'parser' ? marker : value), 2)
+  const text = `import tseslint from ${JSON.stringify(pathToFileURL(TSESLINT_PATH).href)}\nexport default ${json.replace(JSON.stringify(marker), 'tseslint.parser')}\n`
+  writeFileIn(dir, 'eslint.cli.config.mjs', text)
+  return path.join(dir, 'eslint.cli.config.mjs')
+}
+
 const ESLINT_BIN = path.join(__dirname, '..', 'node_modules', 'eslint', 'bin', 'eslint.js')
 
 const sampleRoot = (): string => {
@@ -44,16 +60,19 @@ describe('in-process ESLint equals recorded ESLint JSON', () => {
     expect(shape(results[0].messages as unknown as Record<string, unknown>[])).toEqual(shape(copied[0].messages))
   })
 
-  it('equals the real eslint binary run with an equivalent config file and -f json', async () => {
+  it('equals the real eslint binary run with the same config, -f json, on a scope with twins, directives and ignored folders', async () => {
     const root = sampleRoot()
-    writeFileIn(root, 'src/second.ts', 'export const twice = (n: number) => (n > 0 ? n * 2 : 0)\n')
+    const source = 'export const twice = (n: number) => (n > 0 ? n * 2 : 0)\n'
+    writeFileIn(root, 'src/second.ts', source)
     writeFileIn(root, 'src/second.js', 'exports.twice = (n) => (n > 0 ? n * 2 : 0)\n')
     writeFileIn(root, 'src/types.d.ts', 'export declare const x: number\n')
-    const stdout = execFileSync(
-      process.execPath,
-      [ESLINT_BIN, '--no-config-lookup', '-c', path.join(FIXTURES, 'eslint.cli.config.mjs'), '-f', 'json', 'src'],
-      { cwd: root, encoding: 'utf8' },
-    )
+    writeFileIn(root, 'src/directive.ts', `/* eslint complexity: off */\n// eslint-disable-next-line complexity\n${source}`)
+    for (const ignored of ['dist', 'coverage', 'cdk.out', 'node_modules']) writeFileIn(root, `src/${ignored}/x.ts`, source)
+    const config = writeCliConfig(tempRoot('crap-cli-config'), DEFAULT_CONFIG.extensions)
+    const stdout = execFileSync(process.execPath, [ESLINT_BIN, '--no-config-lookup', '-c', config, '-f', 'json', 'src'], {
+      cwd: root,
+      encoding: 'utf8',
+    })
     const cli = JSON.parse(stdout) as Record<string, unknown>[]
     const inProcess = await lintScope(root, DEFAULT_CONFIG)
     const pick = (r: Record<string, unknown>) => ({
@@ -63,7 +82,10 @@ describe('in-process ESLint equals recorded ESLint JSON', () => {
       warningCount: r.warningCount,
     })
     expect(inProcess.map((r) => pick(r as unknown as Record<string, unknown>))).toEqual(cli.map(pick))
-    expect(cli.map((r) => path.basename(r.filePath as string))).toEqual(['sample.ts', 'second.js', 'second.ts'])
+    expect(cli.map((r) => path.basename(r.filePath as string))).toEqual(['directive.ts', 'sample.ts', 'second.js', 'second.ts'])
+    // The directives are ignored by both, so the rule still reports: complexity message plus the two warnings.
+    const directive = cli[0].messages as { ruleId: string | null }[]
+    expect(directive.filter((m) => m.ruleId === 'complexity')).toHaveLength(1)
   })
 })
 
@@ -129,6 +151,19 @@ describe('lintTargets', () => {
     const root = tempRoot('crap-targets-file')
     writeFileIn(root, 'src', 'not a directory')
     expect(lintTargets(root, ['src'])).toEqual([])
+  })
+
+  it('skips a scope directory with no lintable file rather than failing', async () => {
+    const root = tempRoot('crap-unmatched')
+    writeFileIn(root, 'src/a.ts', 'export const f = (n: number) => (n ? 1 : 2)\n')
+    writeFileIn(root, 'lib/x.txt', 'not source\n')
+    expect(filesOf(await lintScope(root, DEFAULT_CONFIG), root)).toEqual(['src/a.ts'])
+  })
+
+  it('returns no result when the only scope directory has no lintable file', async () => {
+    const root = tempRoot('crap-unmatched-only')
+    writeFileIn(root, 'lib/x.txt', 'not source\n')
+    expect(await lintScope(root, DEFAULT_CONFIG)).toEqual([])
   })
 
   it('lints nothing when no scope directory exists', async () => {

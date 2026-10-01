@@ -1,12 +1,23 @@
 import { execFileSync } from 'child_process'
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'fs'
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'fs'
 import os from 'os'
 import path from 'path'
+import { afterAll } from 'vitest'
 
 export const FIXTURES = path.join(__dirname, '..', 'fixtures')
 
-export const tempRoot = (prefix: string): string =>
-  realpathSync(mkdtempSync(path.join(os.tmpdir(), `${prefix}-`)))
+const created: string[] = []
+
+// Every directory a test file makes is removed when that file finishes.
+afterAll(() => {
+  for (const dir of created.splice(0)) rmSync(dir, { recursive: true, force: true })
+})
+
+export const tempRoot = (prefix: string): string => {
+  const dir = realpathSync(mkdtempSync(path.join(os.tmpdir(), `${prefix}-`)))
+  created.push(dir)
+  return dir
+}
 
 export const writeFileIn = (root: string, rel: string, text: string): void => {
   mkdirSync(path.dirname(path.join(root, rel)), { recursive: true })

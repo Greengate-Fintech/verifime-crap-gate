@@ -17,22 +17,24 @@ const git = (cwd: string, args: string[]): string => {
 /** The commit a revision names. `--end-of-options` stops a revision from being read as an option. */
 const resolveCommit = (cwd: string, rev: string): string => {
   try {
-    return git(cwd, ['rev-parse', '--verify', '--quiet', '--end-of-options', `${rev}^{commit}`]).trim()
+    return git(cwd, ['rev-parse', '--verify', '--end-of-options', `${rev}^{commit}`]).trim()
   } catch (cause) {
     throw new Error(
-      `Cannot resolve base revision ${rev}: ${cause instanceof Error ? cause.message : String(cause)} (a pull request check needs a checkout with fetch-depth: 2)`,
+      `Cannot resolve base revision ${rev}: ${cause instanceof Error ? cause.message : String(cause)} (if the checkout is shallow, use fetch-depth: 2 so that HEAD^1 exists)`,
       { cause },
     )
   }
 }
 
 /**
- * The text of `relPath` at `rev`, or null when the revision has no such path. The two are told
+ * The text of `relPath` (relative to `repoRoot`, which may be a subdirectory of the git root) at `rev`, or null when the revision has no such path. The two are told
  * apart by listing the tree first, so a git failure is never read as "absent".
  */
 export const readBaseFile = (repoRoot: string, rev: string, relPath: string): string | null => {
   const commit = resolveCommit(repoRoot, rev)
   const listed = git(repoRoot, ['ls-tree', '--name-only', commit, '--', relPath])
   if (listed.trim() === '') return null
-  return git(repoRoot, ['show', `${commit}:${relPath}`])
+  // `./` makes the path relative to the working directory, as the `ls-tree` pathspec is, so a
+  // nested package (a subdirectory of the git root) reads the right file.
+  return git(repoRoot, ['show', `${commit}:./${relPath}`])
 }

@@ -43,7 +43,7 @@ import {
 } from './unmatched'
 
 export interface MeasureOptions {
-  /** A saved ESLint JSON report. Read only when `eslintResults` is absent; the copied tests feed the measure this way. */
+  /** A saved ESLint JSON report, for callers and tests that supply a file. Read only when `eslintResults` is absent. */
   eslintPath: string
   /** Lint results already in hand (the in-process run). They take precedence over `eslintPath`. */
   eslintResults?: readonly EslintFileResult[]
@@ -207,6 +207,7 @@ export const runMeasureLinted = async (opts: LintedMeasureOptions, config: CrapC
     rmSync(opts.outPath, { force: true })
     // ESLint reports real paths, so the root it works from must be the resolved one.
     const eslintResults = await lintScope(realpathSync(opts.repoRoot), config)
+    // `eslintPath` is read only when there are no `eslintResults`, so it is unused here.
     return runMeasure({ ...opts, eslintPath: '', eslintResults, config }, io)
   } catch (e) {
     io.error(e instanceof Error ? e.message : String(e))
@@ -819,5 +820,8 @@ export const runCli = async (argv: string[], env: Env, cwd: string, io: Io): Pro
 if (require.main === module) {
   void runCli(process.argv.slice(2), process.env, process.cwd(), console).then((code) => {
     process.exitCode = code
+  }).catch((e: unknown) => {
+    console.error(e instanceof Error ? e.message : String(e))
+    process.exitCode = 1
   })
 }

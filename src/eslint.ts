@@ -5,11 +5,11 @@ import type { Linter } from 'eslint'
 import tseslint from 'typescript-eslint'
 import type { CrapConfig } from './config'
 
-// Runs ESLint in-process, with the flat config the gate was extracted from (commit 8d9c205):
-// the same ignores, the typescript-eslint parser, inline directives off, and `complexity` at
-// max 0 so that every function is reported with its cyclomatic complexity. The consumer's own
-// ESLint config is never read. The measure's scope filter stays authoritative; the ignores here
-// only save time.
+// Runs ESLint in-process with a built-in flat config: ignores for dependency, build, coverage,
+// declaration and cdk output paths, the typescript-eslint parser, inline directives off, and
+// `complexity` at max 0 so that every function is reported with its cyclomatic complexity.
+// The consumer's own ESLint config is never read. The measure's scope filter stays
+// authoritative; the ignores here only save time.
 
 const IGNORES = ['**/node_modules/**', '**/dist/**', '**/coverage/**', '**/*.d.ts', '**/cdk.out/**']
 

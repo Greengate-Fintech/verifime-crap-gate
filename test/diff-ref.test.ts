@@ -1,6 +1,8 @@
+import { rmSync } from 'fs'
+import path from 'path'
 import { describe, expect, it } from 'vitest'
 import { runCli } from '../src/cli'
-import { commitAll, inDirectory, initRepo, makeIo, tempRoot, writeFileIn } from './helpers/sandbox'
+import { commitAll, git, inDirectory, initRepo, makeIo, tempRoot, writeFileIn } from './helpers/sandbox'
 
 const HEADER = '# header\n'
 const row = (symbol: string, score: string): string => `src/a.ts\t${symbol}\t${score}\n`
@@ -131,5 +133,47 @@ describe('diff reads the base with git', () => {
     const root = repoWith(BASE, BASE)
     const r = await runDiff(root, ['diff', '--base', 'crap/baseline.tsv', '--base-unmatched', 'crap/unmatched.tsv'])
     expect(r.code).toBe(0)
+  })
+
+  it('exits 1, not a pass, when the base tree cannot be read', async () => {
+    const root = repoWith(BASE, BASE)
+    const id = git(root, 'rev-parse', 'HEAD^1^{tree}').trim()
+    rmSync(path.join(root, '.git', 'objects', id.slice(0, 2), id.slice(2)), { force: true })
+    const r = await runDiff(root)
+    expect(r.code).toBe(1)
+    expect(r.logs).toEqual([])
+  })
+})
+
+describe('diff from a subdirectory of the git root (a nested package)', () => {
+  const nested = (base: string | null, head: string): string => {
+    const root = tempRoot('crap-diff-sub')
+    initRepo(root)
+    writeFileIn(root, 'README.md', 'x\n')
+    if (base !== null) writeFileIn(root, 'pkg/crap/baseline.tsv', base)
+    commitAll(root, 'base')
+    writeFileIn(root, 'pkg/crap/baseline.tsv', head)
+    writeFileIn(root, 'pkg/crap/unmatched.tsv', '# header\n')
+    writeFileIn(root, 'README.md', 'y\n')
+    commitAll(root, 'head')
+    return path.join(root, 'pkg')
+  }
+
+  it('passes when there is no growth', async () => {
+    const r = await runDiff(nested(HEADER + row('f', '10.000'), HEADER + row('f', '9.000')))
+    expect(r.errors).toEqual([])
+    expect(r.code).toBe(0)
+  })
+
+  it('passes when the base has no baseline (base absent)', async () => {
+    const r = await runDiff(nested(null, HEADER + row('f', '10.000')))
+    expect(r.code).toBe(0)
+    expect(r.logs[0]).toContain('no baseline on the base')
+  })
+
+  it('finds growth', async () => {
+    const r = await runDiff(nested(HEADER + row('f', '10.000'), HEADER + row('f', '12.000')))
+    expect(r.code).toBe(1)
+    expect(r.errors[0]).toContain('GROWN src/a.ts#f')
   })
 })

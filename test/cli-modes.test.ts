@@ -190,7 +190,8 @@ describe('baseline and check', () => {
 })
 
 describe('the CLI entry point', () => {
-  it('runs a mode as a process and exits with its code', () => {
+  // Two tsx start-ups: well over the default timeout on a slow runner.
+  it('runs a mode as a process and exits with its code', { timeout: 60_000 }, () => {
     const root = project()
     const ok = spawnSync(TSX, [ENTRY, 'measure'], { cwd: root, encoding: 'utf8' })
     expect(ok.status).toBe(0)
