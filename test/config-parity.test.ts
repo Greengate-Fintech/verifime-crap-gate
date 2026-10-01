@@ -61,7 +61,7 @@ describe('threshold is threaded through every use', () => {
   it('a whole run at a higher threshold freezes and counts nothing below it', () => {
     const raised = { ...DEFAULT_CONFIG, threshold: 200 }
     const out = observe({ config: raised }, raised.threshold) as Record<string, { logs: string[]; baselineTsv?: string }>
-    expect(out.measureAccept.logs).toEqual(['CRAP measure: functions=9 over5=0 sumOver5=0.0 unmatched=0'])
+    expect(out.measureAccept.logs).toEqual(['CRAP measure: functions=10 over5=0 sumOver5=0.0 unmatched=0'])
     expect(out.baseline.baselineTsv).not.toContain('src/hot.ts')
   })
 })

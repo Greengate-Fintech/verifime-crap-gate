@@ -37,14 +37,36 @@ const hotCoverage = (): unknown => {
   }
 }
 
+const CDK_FILE = `${FAKE_ROOT}/cdk/lib/stack.ts`
+// A coverage key written on another machine: it joins the measured file on the `cdk` anchor.
+const CDK_FOREIGN_KEY = '/home/runner/work/other/other/cdk/lib/stack.ts'
+
+const cdkEslint = (): unknown => ({
+  filePath: CDK_FILE,
+  messages: [{ ruleId: 'complexity', message: "Method 'build' has a complexity of 10. Maximum allowed is 0.", line: 4, column: 3 }],
+})
+
+const cdkCoverage = (): unknown => {
+  const span = { start: { line: 4, column: 2 }, end: { line: 12, column: 3 } }
+  return {
+    path: CDK_FOREIGN_KEY,
+    statementMap: {},
+    s: {},
+    fnMap: { '0': { name: 'build', decl: span, loc: span } },
+    f: { '0': 0 },
+    branchMap: {},
+    b: {},
+  }
+}
+
 const eslintText = (root: string): string => {
   const base = JSON.parse(readFixture('eslint.json')) as unknown[]
-  return JSON.stringify([...base, hotEslint()], null, 2).split(FAKE_ROOT).join(root)
+  return JSON.stringify([...base, hotEslint(), cdkEslint()], null, 2).split(FAKE_ROOT).join(root)
 }
 
 const coverageText = (root: string): string => {
   const base = JSON.parse(readFixture('coverage-final.json')) as Record<string, unknown>
-  const all = { ...base, [`${FAKE_ROOT}/src/hot.ts`]: hotCoverage() }
+  const all = { ...base, [`${FAKE_ROOT}/src/hot.ts`]: hotCoverage(), [CDK_FOREIGN_KEY]: cdkCoverage() }
   return JSON.stringify(all, null, 2).split(FAKE_ROOT).join(root)
 }
 
