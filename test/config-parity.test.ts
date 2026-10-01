@@ -65,3 +65,22 @@ describe('threshold is threaded through every use', () => {
     expect(out.baseline.baselineTsv).not.toContain('src/hot.ts')
   })
 })
+
+describe('ratchet messages carry the configured threshold', () => {
+  const fn = (crap: number): FunctionScore => ({ file: 'src/a.ts', symbol: 's', kind: 'Function', line: 1, cc: 1, cov: 0, covKind: 'stmt', crap })
+
+  it('a new offender names the threshold it exceeded', () => {
+    const [v] = evaluateRatchet(new Map(), groupScores([fn(25)]), 20)
+    expect(v.message).toBe('scores 25.0, above the threshold of 20, and is not in crap/baseline.tsv')
+  })
+
+  it('a stale row names the threshold it fell to or below', () => {
+    const [v] = evaluateRatchet(groupScores([fn(90)]), groupScores([fn(15)]), 20)
+    expect(v.message).toBe('was frozen at 90.0 but now scores 15.0, at or below the threshold of 20')
+  })
+
+  it('a refused baseline growth names the threshold', () => {
+    const { refused } = planBaselineUpdate(groupScores([]), groupScores([fn(25)]), false, 20)
+    expect(refused[0].message).toBe('scores 25.0, above the threshold of 20, and is not in crap/baseline.tsv')
+  })
+})
