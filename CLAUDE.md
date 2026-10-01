@@ -10,11 +10,12 @@
 
 - Every PR body and every release note states "Score impact: neutral" or "Score impact: changing".
 - Every release has a CHANGELOG entry.
-- Neutral means no consumer score, message, exit code or file format changes.
+- "Score impact" classifies scores only. Neutral means no consumer's baseline or unmatched rows change. Changing means any of them can.
 
 ## Parity rule
 
-- The file formats, messages, exit codes and the threshold of 8 change only in a release classified "Score impact: changing".
+- The file formats, the threshold of 8, and the existing messages and exit codes stay identical, in a neutral release and in a changing one, unless a decision records the change.
+- New command-line surface text (a new usage line, a new error for a condition that had none) is allowed. List every such change, and any change to an existing message, in the PR body.
 - A copied or refactored source file must keep its behaviour. Show the diff against the original in the PR body.
 
 ## Commits and pull requests

@@ -6,7 +6,7 @@
 
 Score impact: neutral | changing
 
-<!-- Pick one. "changing" means any output, message, exit code, file format or threshold differs for a consumer. -->
+<!-- Pick one. "changing" means a consumer's baseline or unmatched rows can change. This line classifies scores only. List any message, usage or exit code change under Summary. -->
 
 ## Checks
 

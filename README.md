@@ -48,7 +48,17 @@ The list only shrinks. An unmatched function that is not listed fails the measur
 
 `measure` deletes any earlier report first. It then writes a new report even when it exits 1 (problems, unmatched functions, stale entries, nothing measured). It writes no report only when it throws, for example on missing or unreadable input.
 
-`check` and `baseline` read the report their own measure has just written. `check` refuses a report made with `--accept-unmatched`.
+`check` and `baseline` read the report their own measure has just written. `check` also refuses a report made with `--accept-unmatched`, which guards a report that comes from outside the gate.
+
+## CRAP gate
+
+When `check` fails, read the message:
+
+- `NEW OFFENDER` or `REGRESSION`: change the code so the function scores lower. Growth in the baseline needs `npm run crap:baseline -- --allow-growth`, and a reason in the pull request.
+- `STALE ENTRY`: a recorded function improved below the threshold or has gone. Delete the line, or run `npm run crap:baseline`.
+- `Unmatched function`: the coverage provider has no entry for it. Fix the coverage, or run `npm run crap:baseline` to list it.
+
+`diff` fails when a head file has grown against its base, and leaves the decision to the reviewer.
 
 ## How complexity is measured
 
@@ -58,7 +68,7 @@ The gate runs ESLint through its Node API. It does not read your ESLint config a
 - the `complexity` rule at `max: 0`, so every function is reported with its cyclomatic complexity;
 - inline directives off (`noInlineConfig`), and unused-directive reporting off;
 - files matched by `extensions` only (`.ts` by default), so a compiled `.js` file beside its `.ts` source reports no function;
-- ignored: `node_modules`, `dist`, `coverage`, `*.d.ts` and `cdk.out` folders.
+- ignored: files under `node_modules`, `dist`, `coverage` and `cdk.out` folders, and `*.d.ts` files.
 
 A scope directory that does not exist is skipped. When none exists, nothing is measured and the run exits 1 with `No functions were measured`.
 
@@ -69,7 +79,7 @@ Each command runs from the repository root. Each lints and measures itself.
 - `measure [--coverage <path>]... [--accept-unmatched]`: lints, joins the result to coverage and writes `coverage/crap-report.json`. Without `--coverage`, it reads the `coverage` files from the config (see Configuration), which default to `coverage/coverage-final.json` and `cdk/coverage/coverage-final.json`.
 - `check`: runs `measure`, then the ratchet check against `crap/baseline.tsv`. It stops with exit 1, without the ratchet check, when the measure fails.
 - `baseline [--allow-growth]`: runs `measure` with `--accept-unmatched`, then writes `crap/baseline.tsv` and `crap/unmatched.tsv`. It stops with exit 1 when the measure fails.
-- `diff [--base-ref <rev>]`: compares the working tree's `crap/baseline.tsv` and `crap/unmatched.tsv` with the same files at a git revision. The default revision is `HEAD^1`, the first parent of a pull request's merge commit. It reads the base with `git`, not from the working tree.
+- `diff [--base-ref <rev>]`: compares the working tree's `crap/baseline.tsv` and `crap/unmatched.tsv` with the same files at a git revision. The default revision is `HEAD^1`, the first parent of the checked-out commit (for a pull request check, the first parent of the merge commit). It reads the base with `git`, not from the working tree.
   - A path the revision does not have means the base is absent (the initial freeze), and the comparison passes for that file.
   - A revision that does not resolve, or any other `git` failure, exits 1.
   - A pull request check needs a checkout with `fetch-depth: 2`, so that `HEAD^1` exists.
