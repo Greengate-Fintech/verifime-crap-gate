@@ -1,0 +1,45 @@
+{
+  "measure": {
+    "code": 1,
+    "logs": [
+      "CRAP measure: functions=8 over5=1 sumOver5=156.0 unmatched=1"
+    ],
+    "errors": [
+      "Unmatched function: src/hot.ts:90 lost (cc 9)"
+    ],
+    "report": "{\n  \"summary\": {\n    \"functions\": 8,\n    \"over5\": 1,\n    \"sumOver5\": 156,\n    \"unmatched\": 1\n  },\n  \"functions\": [\n    {\n      \"file\": \"src/sample.ts\",\n      \"symbol\": \"namedFunction\",\n      \"kind\": \"Function\",\n      \"line\": 6,\n      \"cc\": 2,\n      \"cov\": 0.5,\n      \"covKind\": \"min(stmt,branch)\",\n      \"crap\": 2.5\n    },\n    {\n      \"file\": \"src/sample.ts\",\n      \"symbol\": \"run\",\n      \"kind\": \"Method\",\n      \"line\": 14,\n      \"cc\": 2,\n      \"cov\": 0,\n      \"covKind\": \"min(stmt,branch)\",\n      \"crap\": 6\n    },\n    {\n      \"file\": \"src/sample.ts\",\n      \"symbol\": \"handler\",\n      \"kind\": \"Async arrow function\",\n      \"line\": 19,\n      \"cc\": 1,\n      \"cov\": 1,\n      \"covKind\": \"stmt\",\n      \"crap\": 1\n    },\n    {\n      \"file\": \"src/sample.ts\",\n      \"symbol\": \"use callback\",\n      \"kind\": \"Arrow function\",\n      \"line\": 23,\n      \"cc\": 2,\n      \"cov\": 0.6667,\n      \"covKind\": \"min(stmt,branch)\",\n      \"crap\": 2.148\n    },\n    {\n      \"file\": \"src/sample.ts\",\n      \"symbol\": \"Promise callback\",\n      \"kind\": \"Arrow function\",\n      \"line\": 30,\n      \"cc\": 1,\n      \"cov\": 1,\n      \"covKind\": \"stmt\",\n      \"crap\": 1\n    },\n    {\n      \"file\": \"src/sample.ts\",\n      \"symbol\": \"register callback\",\n      \"kind\": \"Arrow function\",\n      \"line\": 34,\n      \"cc\": 1,\n      \"cov\": 0,\n      \"covKind\": \"stmt\",\n      \"crap\": 2\n    },\n    {\n      \"file\": \"src/sample.ts\",\n      \"symbol\": \"register callback\",\n      \"kind\": \"Arrow function\",\n      \"line\": 34,\n      \"cc\": 2,\n      \"cov\": 0.5,\n      \"covKind\": \"min(stmt,branch)\",\n      \"crap\": 2.5\n    },\n    {\n      \"file\": \"src/hot.ts\",\n      \"symbol\": \"hot\",\n      \"kind\": \"Function\",\n      \"line\": 3,\n      \"cc\": 12,\n      \"cov\": 0,\n      \"covKind\": \"called\",\n      \"crap\": 156\n    }\n  ],\n  \"unmatched\": [\n    {\n      \"file\": \"src/hot.ts\",\n      \"symbol\": \"lost\",\n      \"line\": 90,\n      \"cc\": 9,\n      \"kind\": \"Function\"\n    }\n  ],\n  \"listedUnmatched\": [],\n  \"staleUnmatched\": [],\n  \"acceptedUnmatched\": false\n}\n"
+  },
+  "measureAccept": {
+    "code": 0,
+    "logs": [
+      "CRAP measure: functions=9 over5=2 sumOver5=246.0 unmatched=0"
+    ],
+    "errors": [],
+    "report": "{\n  \"summary\": {\n    \"functions\": 9,\n    \"over5\": 2,\n    \"sumOver5\": 246,\n    \"unmatched\": 0\n  },\n  \"functions\": [\n    {\n      \"file\": \"src/sample.ts\",\n      \"symbol\": \"namedFunction\",\n      \"kind\": \"Function\",\n      \"line\": 6,\n      \"cc\": 2,\n      \"cov\": 0.5,\n      \"covKind\": \"min(stmt,branch)\",\n      \"crap\": 2.5\n    },\n    {\n      \"file\": \"src/sample.ts\",\n      \"symbol\": \"run\",\n      \"kind\": \"Method\",\n      \"line\": 14,\n      \"cc\": 2,\n      \"cov\": 0,\n      \"covKind\": \"min(stmt,branch)\",\n      \"crap\": 6\n    },\n    {\n      \"file\": \"src/sample.ts\",\n      \"symbol\": \"handler\",\n      \"kind\": \"Async arrow function\",\n      \"line\": 19,\n      \"cc\": 1,\n      \"cov\": 1,\n      \"covKind\": \"stmt\",\n      \"crap\": 1\n    },\n    {\n      \"file\": \"src/sample.ts\",\n      \"symbol\": \"use callback\",\n      \"kind\": \"Arrow function\",\n      \"line\": 23,\n      \"cc\": 2,\n      \"cov\": 0.6667,\n      \"covKind\": \"min(stmt,branch)\",\n      \"crap\": 2.148\n    },\n    {\n      \"file\": \"src/sample.ts\",\n      \"symbol\": \"Promise callback\",\n      \"kind\": \"Arrow function\",\n      \"line\": 30,\n      \"cc\": 1,\n      \"cov\": 1,\n      \"covKind\": \"stmt\",\n      \"crap\": 1\n    },\n    {\n      \"file\": \"src/sample.ts\",\n      \"symbol\": \"register callback\",\n      \"kind\": \"Arrow function\",\n      \"line\": 34,\n      \"cc\": 1,\n      \"cov\": 0,\n      \"covKind\": \"stmt\",\n      \"crap\": 2\n    },\n    {\n      \"file\": \"src/sample.ts\",\n      \"symbol\": \"register callback\",\n      \"kind\": \"Arrow function\",\n      \"line\": 34,\n      \"cc\": 2,\n      \"cov\": 0.5,\n      \"covKind\": \"min(stmt,branch)\",\n      \"crap\": 2.5\n    },\n    {\n      \"file\": \"src/hot.ts\",\n      \"symbol\": \"hot\",\n      \"kind\": \"Function\",\n      \"line\": 3,\n      \"cc\": 12,\n      \"cov\": 0,\n      \"covKind\": \"called\",\n      \"crap\": 156\n    },\n    {\n      \"file\": \"src/hot.ts\",\n      \"symbol\": \"lost\",\n      \"kind\": \"Function\",\n      \"line\": 90,\n      \"cc\": 9,\n      \"cov\": 0,\n      \"covKind\": \"unmatched\",\n      \"crap\": 90\n    }\n  ],\n  \"unmatched\": [],\n  \"listedUnmatched\": [\n    {\n      \"file\": \"src/hot.ts\",\n      \"symbol\": \"lost\",\n      \"line\": 90,\n      \"cc\": 9,\n      \"kind\": \"Function\"\n    }\n  ],\n  \"staleUnmatched\": [],\n  \"acceptedUnmatched\": true\n}\n"
+  },
+  "baseline": {
+    "code": 0,
+    "logs": [
+      "CRAP baseline: wrote 2 rows to <root>/crap/baseline.tsv",
+      "CRAP baseline: wrote 1 unmatched rows to <root>/crap/unmatched.tsv"
+    ],
+    "errors": [],
+    "baselineTsv": "# CRAP ratchet baseline: the lowest recorded score of every function above the threshold.\n# See the README \"CRAP gate\" section for how to respond to a failing check.\n# Format: file<TAB>symbol<TAB>score, one row per scored occurrence.\n# The baseline only shrinks. Regenerate with: npm run crap:baseline\n# Growth (new offenders or worse scores) needs: npm run crap:baseline -- --allow-growth\n\nsrc/hot.ts\thot\t156.000\nsrc/hot.ts\tlost\t90.000\n",
+    "unmatchedTsv": "# Functions the coverage provider gives no entry for, scored at coverage 0 and ratcheted like the baseline.\n# See the README \"CRAP gate\" section.\n# Format: file<TAB>symbol, one row per occurrence.\n# The list only shrinks. Regenerate with: npm run crap:baseline\n# Growth (a new unmatched function) needs: npm run crap:baseline -- --allow-growth\n\nsrc/hot.ts\tlost\n"
+  },
+  "measureListed": {
+    "code": 0,
+    "logs": [
+      "CRAP measure: functions=9 over5=2 sumOver5=246.0 unmatched=0"
+    ],
+    "errors": [],
+    "report": "{\n  \"summary\": {\n    \"functions\": 9,\n    \"over5\": 2,\n    \"sumOver5\": 246,\n    \"unmatched\": 0\n  },\n  \"functions\": [\n    {\n      \"file\": \"src/sample.ts\",\n      \"symbol\": \"namedFunction\",\n      \"kind\": \"Function\",\n      \"line\": 6,\n      \"cc\": 2,\n      \"cov\": 0.5,\n      \"covKind\": \"min(stmt,branch)\",\n      \"crap\": 2.5\n    },\n    {\n      \"file\": \"src/sample.ts\",\n      \"symbol\": \"run\",\n      \"kind\": \"Method\",\n      \"line\": 14,\n      \"cc\": 2,\n      \"cov\": 0,\n      \"covKind\": \"min(stmt,branch)\",\n      \"crap\": 6\n    },\n    {\n      \"file\": \"src/sample.ts\",\n      \"symbol\": \"handler\",\n      \"kind\": \"Async arrow function\",\n      \"line\": 19,\n      \"cc\": 1,\n      \"cov\": 1,\n      \"covKind\": \"stmt\",\n      \"crap\": 1\n    },\n    {\n      \"file\": \"src/sample.ts\",\n      \"symbol\": \"use callback\",\n      \"kind\": \"Arrow function\",\n      \"line\": 23,\n      \"cc\": 2,\n      \"cov\": 0.6667,\n      \"covKind\": \"min(stmt,branch)\",\n      \"crap\": 2.148\n    },\n    {\n      \"file\": \"src/sample.ts\",\n      \"symbol\": \"Promise callback\",\n      \"kind\": \"Arrow function\",\n      \"line\": 30,\n      \"cc\": 1,\n      \"cov\": 1,\n      \"covKind\": \"stmt\",\n      \"crap\": 1\n    },\n    {\n      \"file\": \"src/sample.ts\",\n      \"symbol\": \"register callback\",\n      \"kind\": \"Arrow function\",\n      \"line\": 34,\n      \"cc\": 1,\n      \"cov\": 0,\n      \"covKind\": \"stmt\",\n      \"crap\": 2\n    },\n    {\n      \"file\": \"src/sample.ts\",\n      \"symbol\": \"register callback\",\n      \"kind\": \"Arrow function\",\n      \"line\": 34,\n      \"cc\": 2,\n      \"cov\": 0.5,\n      \"covKind\": \"min(stmt,branch)\",\n      \"crap\": 2.5\n    },\n    {\n      \"file\": \"src/hot.ts\",\n      \"symbol\": \"hot\",\n      \"kind\": \"Function\",\n      \"line\": 3,\n      \"cc\": 12,\n      \"cov\": 0,\n      \"covKind\": \"called\",\n      \"crap\": 156\n    },\n    {\n      \"file\": \"src/hot.ts\",\n      \"symbol\": \"lost\",\n      \"kind\": \"Function\",\n      \"line\": 90,\n      \"cc\": 9,\n      \"cov\": 0,\n      \"covKind\": \"unmatched\",\n      \"crap\": 90\n    }\n  ],\n  \"unmatched\": [],\n  \"listedUnmatched\": [\n    {\n      \"file\": \"src/hot.ts\",\n      \"symbol\": \"lost\",\n      \"line\": 90,\n      \"cc\": 9,\n      \"kind\": \"Function\"\n    }\n  ],\n  \"staleUnmatched\": [],\n  \"acceptedUnmatched\": false\n}\n"
+  },
+  "check": {
+    "code": 0,
+    "logs": [
+      "CRAP ratchet: pass (2 frozen, 9 functions measured)"
+    ],
+    "errors": []
+  }
+}
