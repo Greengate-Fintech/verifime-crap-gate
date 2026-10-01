@@ -76,6 +76,14 @@ The gate reads `crap/config.json` from the directory it runs in. The file is opt
 | `coverage` | array of strings | `["coverage/coverage-final.json", "cdk/coverage/coverage-final.json"]` | Istanbul coverage files that `measure` reads. |
 | `threshold` | number | `8` | A function scoring above it is an offender. It applies to the `measure` summary and to `check` and `baseline`. It must be finite and greater than 0. |
 
+Notes:
+
+- Nested packages are not measured by the default `scope`. List each one, for example `packages/x/src`.
+- When coverage paths were written on a different checkout root, the gate joins them to measured files on a path segment. Every segment that join should start on must be in `anchors`. A segment that is not listed drops that coverage, and the function is then reported as unmatched.
+- The gate reads `crap/config.json` from the working directory only.
+- A key repeated in the file takes its last value.
+- The summary fields `over5` and `sumOver5`, and the `over5=` text, keep those names whatever `threshold` is.
+
 Coverage files, highest precedence first: the `--coverage` flag of `measure`, then `coverage` in the config, then the default.
 
 The gate validates the file before it runs any command. It exits 1, naming `crap/config.json` and the key, when:
