@@ -91,7 +91,7 @@ A consumer adds npm scripts that call the gate, for example `crap:check` and `cr
 
 ## Configuration
 
-The gate reads `crap/config.json` from the directory it runs in, or the file named by `--config <path>` (the action's `config` input), relative to that directory. The default file is optional: a missing `crap/config.json` means all defaults. A file named with `--config` must exist. Without it, every key has the default below. Every key is optional, and a file that sets none of them behaves like no file.
+The gate reads `crap/config.json` from the directory it runs in, or the file named by `--config <path>` (the action's `config` input), relative to that directory. The path `crap/config.json`, written exactly so, is optional even when named: a missing file means all defaults. Any other path that is missing is an error. Without it, every key has the default below. Every key is optional, and a file that sets none of them behaves like no file.
 
 | Key | Type | Default | Meaning |
 |---|---|---|---|
@@ -131,7 +131,7 @@ The baseline and unmatched files do not record the threshold. Changing `threshol
 
 The action runs the bundled gate on the runner's Node 24. It needs no `npm install`, no ESLint and no TypeScript in your repository. Your coverage must exist before the action runs, as `coverage/coverage-final.json` (or the files in `coverage` of your config).
 
-Pin the action to an exact tag, for example `@v1.0.0`. While testing a release candidate, pin to a full commit SHA. Never pin to a moving major tag.
+Pin the action to an exact release tag, written `@vX.Y.Z` below (replace it with a tag that exists). While testing a release candidate, pin to a full commit SHA, written `@<full-commit-sha>`. Never pin to a moving major tag.
 
 ### Inputs and output
 
@@ -139,11 +139,11 @@ Pin the action to an exact tag, for example `@v1.0.0`. While testing a release c
 |---|---|---|
 | `mode` (required) | none | `measure`, `check`, `baseline` or `diff`. |
 | `config` | `crap/config.json` | The configuration file. |
-| `base` | `HEAD^1` | `diff` only: the revision whose `crap/` files are the base. |
-| `output-dir` | none | `baseline` only: write the regenerated files here instead of `crap/`. Ignored by other modes. |
+| `base` | `HEAD^1` | `diff` only: the revision whose `crap/` files are the base. Other modes ignore it and print a `::warning::`. |
+| `output-dir` | none | `baseline` only: write the regenerated files here instead of `crap/`. A relative path is relative to `working-directory`. Other modes ignore it and print a `::warning::`. |
 | `working-directory` | `.` | The directory to run in, relative to the workspace. |
 
-The `summary` output is the last line the run wrote to standard output (the last error line when it wrote none). The action also writes a short job summary. Its exit code and messages are the CLI's for the same mode. With `GITHUB_ACTIONS=true`, which the runner sets, a failing `check` or `diff` also writes `::error` annotations.
+The `summary` output is one line. With exit code 0 it is the last standard output line. With any other exit code it is the last standard error line that is not a `::` annotation. Each falls back to the other stream when it has no line. The action also writes a short job summary. Its exit code and messages are the CLI's for the same mode. With `GITHUB_ACTIONS=true`, which the runner sets, a failing `check` or `diff` also writes `::error` annotations. Under a `working-directory` other than the workspace root, the action prefixes each annotation's file path with that directory, because GitHub reads it from the root.
 
 ### The two consumer jobs
 
@@ -160,7 +160,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run test:coverage # writes coverage/coverage-final.json
-      - uses: Greengate-Fintech/verifime-crap-gate@v1.0.0
+      - uses: Greengate-Fintech/verifime-crap-gate@vX.Y.Z
         with:
           mode: check
 
@@ -171,7 +171,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 2 # mode diff reads HEAD^1
-      - uses: Greengate-Fintech/verifime-crap-gate@v1.0.0
+      - uses: Greengate-Fintech/verifime-crap-gate@vX.Y.Z
         with:
           mode: diff
 ```
@@ -189,10 +189,10 @@ Use `working-directory` for a package that is not at the repository root. The co
 
 ### Regenerating the baseline in CI
 
-`baseline` mode with `output-dir` writes the regenerated files for you to download. It never commits:
+`baseline` mode with `output-dir` writes the regenerated files for you to download. It never commits. It needs the same checkout, install and coverage steps as the `check` job above, so that the same coverage exists. Add them before this step:
 
 ```yaml
-      - uses: Greengate-Fintech/verifime-crap-gate@v1.0.0
+      - uses: Greengate-Fintech/verifime-crap-gate@vX.Y.Z
         with:
           mode: baseline
           output-dir: ${{ runner.temp }}/crap-baseline
@@ -223,15 +223,15 @@ A tag that changes any score is released as "Score impact: changing" (see `CHANG
 
 The bundled CLI runs through `npx` from a git tag, with nothing to install:
 
-    npx --yes github:Greengate-Fintech/verifime-crap-gate#v1.0.0 check
+    npx --yes github:Greengate-Fintech/verifime-crap-gate#vX.Y.Z check
 
 The gate's advice text tells a reader to run `npm run crap:baseline`, so add wrappers to the consumer's `package.json`:
 
 ```json
 {
   "scripts": {
-    "crap": "npx --yes github:Greengate-Fintech/verifime-crap-gate#v1.0.0 check",
-    "crap:baseline": "npx --yes github:Greengate-Fintech/verifime-crap-gate#v1.0.0 baseline"
+    "crap": "npx --yes github:Greengate-Fintech/verifime-crap-gate#vX.Y.Z check",
+    "crap:baseline": "npx --yes github:Greengate-Fintech/verifime-crap-gate#vX.Y.Z baseline"
   }
 }
 ```

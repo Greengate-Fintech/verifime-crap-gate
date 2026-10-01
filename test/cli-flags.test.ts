@@ -58,6 +58,12 @@ describe('--config', () => {
     expect(r.errors.join('\n')).not.toContain('Cannot read')
   })
 
+  it('is a usage error when repeated', async () => {
+    const r = await run(project(), 'measure', '--config', 'a.json', '--config', 'b.json')
+    expect(r.code).toBe(1)
+    expect(r.errors[0]).toContain('Duplicate flag: --config')
+  })
+
   it('is a usage error without a value', async () => {
     const r = await run(project(), 'measure', '--config')
     expect(r.code).toBe(1)

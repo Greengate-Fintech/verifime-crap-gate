@@ -16,9 +16,11 @@ Score impact: neutral
 - `diff [--base-ref <rev>]` reads the base `crap/` files from a git revision (default `HEAD^1`). A path the revision lacks means the base is absent; any `git` failure exits 1. The file-path flags remain.
 - The repository runs its own gate in CI (`CRAP ratchet gate` and `CRAP baseline diff`).
 - A GitHub Action (`action.yml`, `runs.using: node24`, `dist/action.cjs`) with inputs `mode`, `config`, `base`, `output-dir` and `working-directory`, and a `summary` output. It writes a short job summary. Its exit code and messages are the CLI's.
-- A bundled CLI, `dist/cli.cjs` (`bin` `crap-gate`), usable with `npx github:Greengate-Fintech/verifime-crap-gate#<tag>`. ESLint, typescript-eslint and TypeScript 5.9.3 are bundled, so a consumer needs none of them. `dist/THIRD-PARTY-LICENSES.txt` lists the bundled packages and their licences.
+- A bundled CLI, `dist/cli.cjs` (`bin` `crap-gate`), usable with `npx github:Greengate-Fintech/verifime-crap-gate#<tag>`. ESLint, typescript-eslint and TypeScript are bundled, so a consumer needs none of them. `dist/THIRD-PARTY-LICENSES.txt` lists the bundled packages and their licences.
 - `--config <path>` on every command, and `baseline --output-dir <dir>` to write the regenerated files elsewhere than `crap/`. With neither flag, behaviour is unchanged.
 - CI jobs `Rebuild dist`, `Action end to end` and `npx from git`.
+- The action prefixes `::error` annotation paths with a non-root `working-directory`, and warns when `output-dir` or `base` is given to a mode that ignores it. Its `summary` output, for a non-zero exit, is the last error line that is not an annotation.
+- The build fails on any esbuild warning or on a bundled package with no licence text, and writes `dist/` only after a full success. Licence texts for packages that ship none live in `licence-texts.mjs`.
 
 ### Changed
 

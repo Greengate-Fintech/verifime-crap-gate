@@ -5,7 +5,7 @@ inputs:
     description: The command to run. One of measure, check, baseline, diff.
     required: true
   config:
-    description: Path to the gate configuration file, relative to the working directory.
+    description: Path to the gate configuration file, relative to the working directory. The path crap/config.json may be absent; any other missing path is an error.
     required: false
     default: crap/config.json
   base:
@@ -13,7 +13,7 @@ inputs:
     required: false
     default: HEAD^1
   output-dir:
-    description: For mode baseline, write the regenerated baseline.tsv and unmatched.tsv into this directory instead of crap/. Nothing is committed.
+    description: For mode baseline, write the regenerated baseline.tsv and unmatched.tsv into this directory instead of crap/. A relative path is relative to the working directory. Nothing is committed.
     required: false
     default: ''
   working-directory:
@@ -22,7 +22,7 @@ inputs:
     default: .
 outputs:
   summary:
-    description: The last line the run wrote to standard output (the last error line when it wrote none).
+    description: One line. With exit code 0, the last standard output line. With any other exit code, the last standard error line that is not a :: annotation. Each falls back to the other stream when it has no line.
 runs:
   using: node24
   main: dist/action.cjs

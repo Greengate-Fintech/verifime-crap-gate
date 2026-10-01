@@ -179,6 +179,7 @@ jobs:
         env:
           REF: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
+          set -o pipefail
           consumer="$RUNNER_TEMP/consumer"
           cp -R test/e2e/project "$consumer"
           cd "$consumer"

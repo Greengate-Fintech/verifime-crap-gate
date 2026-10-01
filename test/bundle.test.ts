@@ -27,6 +27,21 @@ const node = (script: string, cwd: string, args: string[] = [], env: Record<stri
   return { status: r.status, stdout: r.stdout, stderr: r.stderr }
 }
 
+/**
+ * A consumer with TypeScript 7 (which typescript-eslint cannot use), its own ESLint, and a config
+ * that would change the results if the gate read it.
+ */
+const hostileProject = (): string => {
+  const root = copyProject()
+  for (const name of ['typescript', 'eslint', 'typescript-eslint']) {
+    writeFileIn(root, `node_modules/${name}/package.json`, JSON.stringify({ name, version: '7.0.0', main: 'index.js' }))
+    writeFileIn(root, `node_modules/${name}/index.js`, `throw new Error('consumer ${name} must not be loaded')\n`)
+  }
+  writeFileIn(root, 'eslint.config.mjs', 'export default [{ ignores: ["**/*"] }]\n')
+  writeFileIn(root, '.eslintrc.json', '{ "root": true, "ignorePatterns": ["*"] }\n')
+  return root
+}
+
 describe('dist/cli.cjs', () => {
   it('measures the fixture project and prints the same summary line as the source', () => {
     const r = node(CLI, copyProject(), ['measure'])
@@ -63,16 +78,7 @@ describe('dist/cli.cjs', () => {
 
   it('ignores the consumer toolchain and ESLint config', () => {
     const clean = node(CLI, copyProject(), ['check'])
-    const root = copyProject()
-    // A consumer with TypeScript 7 (which typescript-eslint cannot use), its own ESLint, and a
-    // config that would change the results if the gate read it.
-    for (const name of ['typescript', 'eslint', 'typescript-eslint']) {
-      writeFileIn(root, `node_modules/${name}/package.json`, JSON.stringify({ name, version: '7.0.0', main: 'index.js' }))
-      writeFileIn(root, `node_modules/${name}/index.js`, `throw new Error('consumer ${name} must not be loaded')\n`)
-    }
-    writeFileIn(root, 'eslint.config.mjs', 'export default [{ ignores: ["**/*"] }]\n')
-    writeFileIn(root, '.eslintrc.json', '{ "root": true, "ignorePatterns": ["*"] }\n')
-    const hostile = node(CLI, root, ['check'])
+    const hostile = node(CLI, hostileProject(), ['check'])
     expect(hostile).toEqual(clean)
     expect(hostile.status).toBe(0)
   })
@@ -90,6 +96,14 @@ describe('dist/action.cjs', () => {
     expect(r.status).toBe(0)
     expect(r.stdout).toBe(`${MEASURE_LINE}\nCRAP ratchet: pass (2 frozen, 4 functions measured)\n`)
     expect(readFileSync(output, 'utf8')).toBe('summary=CRAP ratchet: pass (2 frozen, 4 functions measured)\n')
+  })
+
+  it('ignores the consumer toolchain and ESLint config too', () => {
+    const clean = node(ACTION, copyProject(), [], inputs('check'))
+    const hostile = node(ACTION, hostileProject(), [], inputs('check'))
+    expect(hostile).toEqual(clean)
+    expect(hostile.status).toBe(0)
+    expect(hostile.stdout).toContain('CRAP ratchet: pass')
   })
 
   it('exits 1 and emits the annotation for a new offender', () => {

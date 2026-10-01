@@ -145,3 +145,4 @@ vite.config.ts.timestamp-*
 # Fixture projects for the end-to-end action tests keep their coverage files.
 !test/e2e/**/coverage/
 test/e2e/**/coverage/crap-report.json
+dist.tmp/
