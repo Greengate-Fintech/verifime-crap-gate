@@ -23,6 +23,8 @@ export type ParsedInputs = { inputs: ActionInputs } | { error: string }
 
 type Env = Record<string, string | undefined>
 
+const DEFAULT_BASE = 'HEAD^1'
+
 const MODE_LIST = MODES.join(', ')
 
 /** The runner exposes input `name` as `INPUT_<NAME>`: upper case, spaces to underscores, hyphens kept. */
@@ -40,7 +42,7 @@ export const parseInputs = (env: Env): ParsedInputs => {
     inputs: {
       mode,
       config: inputOf(env, 'config', 'crap/config.json'),
-      base: inputOf(env, 'base', 'HEAD^1'),
+      base: inputOf(env, 'base', DEFAULT_BASE),
       outputDir: inputOf(env, 'output-dir'),
       workingDirectory: inputOf(env, 'working-directory', '.'),
     },
@@ -167,7 +169,8 @@ const prefixAnnotation = (prefix: string): ((line: string) => string) => {
 const ignoredInputs = (env: Env, inputs: ActionInputs): string[] => {
   const ignored: string[] = []
   if (inputs.mode !== 'baseline' && inputs.outputDir !== '') ignored.push(`output-dir (it applies to mode baseline, not ${inputs.mode})`)
-  if (inputs.mode !== 'diff' && inputOf(env, 'base') !== '') ignored.push(`base (it applies to mode diff, not ${inputs.mode})`)
+  // action.yml gives `base` its default, so the runner always passes one: only another value is a choice.
+  if (inputs.mode !== 'diff' && inputs.base !== DEFAULT_BASE) ignored.push(`base (it applies to mode diff, not ${inputs.mode})`)
   return ignored
 }
 

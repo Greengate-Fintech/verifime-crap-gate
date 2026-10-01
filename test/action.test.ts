@@ -275,6 +275,20 @@ describe('ignored inputs', () => {
     expect(r.logs[0]).toBe('::warning::Input base (it applies to mode diff, not measure) is ignored')
   })
 
+  it('does not warn when base is the default the runner fills in from action.yml', async () => {
+    const root = tempRoot('crap-action')
+    projectAt(root)
+    const r = await act(root, { mode: 'check', base: 'HEAD^1' })
+    expect(r.logs.some((l) => l.startsWith('::warning'))).toBe(false)
+  })
+
+  it('still warns for a base that is not the default, outside diff', async () => {
+    const root = tempRoot('crap-action')
+    projectAt(root)
+    const r = await act(root, { mode: 'check', base: 'HEAD^2' })
+    expect(r.logs[0]).toBe('::warning::Input base (it applies to mode diff, not check) is ignored')
+  })
+
   it('does not warn for an input the mode uses, nor for a defaulted one', async () => {
     const root = tempRoot('crap-action')
     projectAt(root)
