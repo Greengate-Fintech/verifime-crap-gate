@@ -8,7 +8,7 @@ CRAP is computed per function as:
 
     CRAP = cc^2 * (1 - cov)^3 + cc
 
-where `cc` is cyclomatic complexity and `cov` is the function's coverage ratio (0 to 1). The result is rounded to 3 decimal places. Complexity comes from an ESLint report; coverage comes from Istanbul-format `coverage-final.json` files.
+where `cc` is cyclomatic complexity and `cov` is the function's coverage ratio (0 to 1). The result is rounded to 3 decimal places. Complexity comes from ESLint, which the gate runs itself, in-process; coverage comes from Istanbul-format `coverage-final.json` files.
 
 The threshold is 8. A function scoring above 8 is an offender.
 
@@ -48,20 +48,36 @@ The list only shrinks. An unmatched function that is not listed fails the measur
 
 `measure` deletes any earlier report first. It then writes a new report even when it exits 1 (problems, unmatched functions, stale entries, nothing measured). It writes no report only when it throws, for example on missing or unreadable input.
 
-`check` and `baseline` read the report at `coverage/crap-report.json`.
+`check` and `baseline` read the report their own measure has just written. `check` refuses a report made with `--accept-unmatched`.
 
-`check` refuses a report made with `--accept-unmatched`.
+## How complexity is measured
+
+The gate runs ESLint through its Node API. It does not read your ESLint config and needs no ESLint report. It lints the `scope` directories that exist, with a built-in flat config:
+
+- the typescript-eslint parser;
+- the `complexity` rule at `max: 0`, so every function is reported with its cyclomatic complexity;
+- inline directives off (`noInlineConfig`), and unused-directive reporting off;
+- files matched by `extensions` only (`.ts` by default), so a compiled `.js` file beside its `.ts` source reports no function;
+- ignored: `node_modules`, `dist`, `coverage`, `*.d.ts` and `cdk.out` folders.
+
+A scope directory that does not exist is skipped. When none exists, nothing is measured and the run exits 1 with `No functions were measured`.
 
 ## Commands
 
-The entry point has four commands. Flags as in its usage string:
+Each command runs from the repository root. Each lints and measures itself.
 
-- `measure [--coverage <path>]... [--accept-unmatched]`. Without `--coverage`, it reads the `coverage` files from the config (see Configuration), which default to `coverage/coverage-final.json` and `cdk/coverage/coverage-final.json`.
-- `check`
-- `baseline [--allow-growth]`
-- `diff --base <path> --base-unmatched <path> [--base-absent] [--base-unmatched-absent] [--head <path>] [--head-unmatched <path>]`
+- `measure [--coverage <path>]... [--accept-unmatched]`: lints, joins the result to coverage and writes `coverage/crap-report.json`. Without `--coverage`, it reads the `coverage` files from the config (see Configuration), which default to `coverage/coverage-final.json` and `cdk/coverage/coverage-final.json`.
+- `check`: runs `measure`, then the ratchet check against `crap/baseline.tsv`. It stops with exit 1, without the ratchet check, when the measure fails.
+- `baseline [--allow-growth]`: runs `measure` with `--accept-unmatched`, then writes `crap/baseline.tsv` and `crap/unmatched.tsv`. It stops with exit 1 when the measure fails.
+- `diff [--base-ref <rev>]`: compares the working tree's `crap/baseline.tsv` and `crap/unmatched.tsv` with the same files at a git revision. The default revision is `HEAD^1`, the first parent of a pull request's merge commit. It reads the base with `git`, not from the working tree.
+  - A path the revision does not have means the base is absent (the initial freeze), and the comparison passes for that file.
+  - A revision that does not resolve, or any other `git` failure, exits 1.
+  - A pull request check needs a checkout with `fetch-depth: 2`, so that `HEAD^1` exists.
+- `diff --base <path> --base-unmatched <path> [--base-absent] [--base-unmatched-absent] [--head <path>] [--head-unmatched <path>]`: the same comparison with the base read from files. It cannot be combined with `--base-ref`.
 
-The entry point reads the ESLint report from `coverage/crap-eslint.json`.
+`check` and `baseline` write `coverage/crap-report.json` as part of their measure. They never trust a report left by an earlier run.
+
+A consumer adds npm scripts that call the gate, for example `crap:check` and `crap:baseline`. The messages tell a reader to run `npm run crap:baseline`.
 
 ## Configuration
 
@@ -106,6 +122,15 @@ The baseline and unmatched files do not record the threshold. Changing `threshol
     npm ci
     npm run typecheck
     npm test
+
+## The gate on this repository
+
+This repository runs its own gate on `src`, with `crap/config.json`, `crap/baseline.tsv` and `crap/unmatched.tsv`. Two CI jobs run it from source with `tsx`:
+
+- `CRAP ratchet gate` runs the tests with coverage (`npm run test:coverage`, which writes `coverage/coverage-final.json`), then `npm run crap:check`.
+- `CRAP baseline diff` checks out with `fetch-depth: 2`, then runs `npm run crap:diff`.
+
+Run the same locally with `npm run test:coverage && npm run crap:check`.
 
 See `CLAUDE.md` for the rules this public repository follows.
 

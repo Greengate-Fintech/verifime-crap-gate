@@ -21,3 +21,34 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
+
+  crap-ratchet-gate:
+    name: CRAP ratchet gate
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Tests with coverage
+        run: npm run test:coverage
+      - name: Check the ratchet
+        run: npm run crap:check
+
+  crap-baseline-diff:
+    name: CRAP baseline diff
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The diff reads the base files from the pull request merge commit's first parent.
+          fetch-depth: 2
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Compare the baseline with the base
+        run: npm run crap:diff
