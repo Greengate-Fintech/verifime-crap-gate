@@ -27,8 +27,9 @@ const resolveCommit = (cwd: string, rev: string): string => {
 }
 
 /**
- * The text of `relPath` (relative to `repoRoot`, which may be a subdirectory of the git root) at `rev`, or null when the revision has no such path. The two are told
- * apart by listing the tree first, so a git failure is never read as "absent".
+ * The text of `relPath` at `rev`, or null when the revision has no such path. `relPath` is
+ * relative to `repoRoot`, which may be a subdirectory of the git root. The two outcomes are
+ * told apart by listing the tree first, so a git failure is never read as "absent".
  */
 export const readBaseFile = (repoRoot: string, rev: string, relPath: string): string | null => {
   const commit = resolveCommit(repoRoot, rev)
