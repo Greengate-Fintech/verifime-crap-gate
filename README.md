@@ -48,6 +48,8 @@ The list only shrinks. An unmatched function that is not listed fails the measur
 
 `measure` deletes any earlier report first. It then writes a new report even when it exits 1 (problems, unmatched functions, stale entries, nothing measured). It writes no report only when it throws, for example on missing or unreadable input.
 
+`check` and `baseline` read the report at `coverage/crap-report.json`.
+
 `check` refuses a report made with `--accept-unmatched`.
 
 ## Commands
