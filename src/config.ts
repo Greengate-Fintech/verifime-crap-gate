@@ -86,24 +86,24 @@ const isKey = (key: string): key is keyof CrapConfig => Object.hasOwn(CHECKS, ke
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
-const invalid = (problem: string): Error => new Error(`Invalid ${CONFIG_DISPLAY}: ${problem}`)
+const invalid = (problem: string, display: string): Error => new Error(`Invalid ${display}: ${problem}`)
 
-const parseJson = (text: string): unknown => {
+const parseJson = (text: string, display: string): unknown => {
   try {
     return JSON.parse(text)
   } catch (cause) {
     const detail = cause instanceof Error ? cause.message : String(cause)
-    throw new Error(`Unreadable ${CONFIG_DISPLAY} (not valid JSON): ${detail}`, { cause })
+    throw new Error(`Unreadable ${display} (not valid JSON): ${detail}`, { cause })
   }
 }
 
 const problemWith = (key: string, value: unknown): string | null =>
   isKey(key) ? CHECKS[key](value) : `unknown key ${quoted(key)}`
 
-const validate = (raw: Record<string, unknown>): void => {
+const validate = (raw: Record<string, unknown>, display: string): void => {
   for (const [key, value] of Object.entries(raw)) {
     const problem = problemWith(key, value)
-    if (problem !== null) throw invalid(problem)
+    if (problem !== null) throw invalid(problem, display)
   }
 }
 
@@ -112,25 +112,28 @@ const withDefaults = (raw: Record<string, unknown>): CrapConfig => {
   return { ...merged, scope: merged.scope.map(trimSlashes) }
 }
 
-/** Throws an Error naming the file and the key when the text is not a valid config. */
-export const parseConfig = (text: string): CrapConfig => {
-  const raw = parseJson(text)
-  if (!isPlainObject(raw)) throw invalid('must be a JSON object')
-  validate(raw)
+/** Throws an Error naming the file and the key when the text is not a valid config. `display` names the file in messages. */
+export const parseConfig = (text: string, display: string = CONFIG_DISPLAY): CrapConfig => {
+  const raw = parseJson(text, display)
+  if (!isPlainObject(raw)) throw invalid('must be a JSON object', display)
+  validate(raw, display)
   return withDefaults(raw)
 }
 
 const isMissing = (e: unknown): boolean => (e as NodeJS.ErrnoException).code === 'ENOENT'
 
-/** A missing file is all defaults; any other read failure is an error. */
-export const loadConfig = (repoRoot: string): CrapConfig => {
+/**
+ * Reads `configPath` (relative to `repoRoot`; `crap/config.json` by default). A missing default file
+ * is all defaults. A missing file that was named, and any other read failure, is an error.
+ */
+export const loadConfig = (repoRoot: string, configPath: string = CONFIG_DISPLAY): CrapConfig => {
   let text: string
   try {
-    text = readFileSync(path.join(repoRoot, CONFIG_DISPLAY), 'utf8')
+    text = readFileSync(path.resolve(repoRoot, configPath), 'utf8')
   } catch (cause) {
-    if (isMissing(cause)) return parseConfig('{}')
+    if (isMissing(cause) && configPath === CONFIG_DISPLAY) return parseConfig('{}')
     const code = (cause as NodeJS.ErrnoException).code ?? 'unknown error'
-    throw new Error(`Cannot read ${CONFIG_DISPLAY} (${code})`, { cause })
+    throw new Error(`Cannot read ${configPath} (${code})`, { cause })
   }
-  return parseConfig(text)
+  return parseConfig(text, configPath)
 }

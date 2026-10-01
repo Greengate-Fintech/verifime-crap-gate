@@ -1,0 +1,5 @@
+{
+  "scope": ["src"],
+  "coverage": ["coverage/coverage-final.json"],
+  "threshold": 2
+}

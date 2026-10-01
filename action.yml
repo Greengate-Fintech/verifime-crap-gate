@@ -1,0 +1,28 @@
+name: CRAP ratchet gate
+description: Scores TypeScript functions by complexity and test coverage, and fails when the set of high-scoring functions grows.
+inputs:
+  mode:
+    description: The command to run. One of measure, check, baseline, diff.
+    required: true
+  config:
+    description: Path to the gate configuration file, relative to the working directory.
+    required: false
+    default: crap/config.json
+  base:
+    description: For mode diff, the git revision whose crap files are the base. The checkout needs fetch-depth 2 for the default.
+    required: false
+    default: HEAD^1
+  output-dir:
+    description: For mode baseline, write the regenerated baseline.tsv and unmatched.tsv into this directory instead of crap/. Nothing is committed.
+    required: false
+    default: ''
+  working-directory:
+    description: The directory to run in, relative to the workspace.
+    required: false
+    default: .
+outputs:
+  summary:
+    description: The last line the run wrote to standard output (the last error line when it wrote none).
+runs:
+  using: node24
+  main: dist/action.cjs

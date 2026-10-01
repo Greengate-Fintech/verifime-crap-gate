@@ -228,6 +228,8 @@ export interface BaselineOptions {
   baselinePath: string
   unmatchedListPath: string
   allowGrowth: boolean
+  /** Write the regenerated files into this directory instead of over `baselinePath` and `unmatchedListPath`. The existing files are still read for the growth check. */
+  outputDir?: string
   /** Optional only because the copied tests omit it; `run` always sets it. */
   threshold?: number
 }
@@ -409,6 +411,20 @@ const refuse = (baselineRefused: Violation[], listRefused: StaleUnmatched[], io:
   io.error('Fix the code, or re-run with: npm run crap:baseline -- --allow-growth')
 }
 
+interface WriteTargets {
+  baseline: string
+  unmatched: string
+}
+
+/** Where the regenerated files go: the `outputDir` when set, otherwise over the files that were read. */
+const writeTargets = (opts: BaselineOptions): WriteTargets =>
+  opts.outputDir === undefined
+    ? { baseline: opts.baselinePath, unmatched: opts.unmatchedListPath }
+    : {
+        baseline: path.join(opts.outputDir, path.basename(opts.baselinePath)),
+        unmatched: path.join(opts.outputDir, path.basename(opts.unmatchedListPath)),
+      }
+
 /** Returns the process exit code. Refuses (1, both files untouched) any growth unless allowGrowth is set. */
 export const runBaseline = (opts: BaselineOptions, io: Io): number => {
   try {
@@ -420,12 +436,13 @@ export const runBaseline = (opts: BaselineOptions, io: Io): number => {
       refuse(plan.refused, listPlan.refused, io)
       return 1
     }
-    mkdirSync(path.dirname(opts.baselinePath), { recursive: true })
-    writeFileSync(opts.baselinePath, renderBaseline(plan.baseline))
-    mkdirSync(path.dirname(opts.unmatchedListPath), { recursive: true })
-    writeFileSync(opts.unmatchedListPath, renderUnmatchedList(listPlan.list))
-    io.log(`CRAP baseline: wrote ${countRows(plan.baseline)} rows to ${opts.baselinePath}`)
-    io.log(`CRAP baseline: wrote ${countCounts(listPlan.list)} unmatched rows to ${opts.unmatchedListPath}`)
+    const to = writeTargets(opts)
+    mkdirSync(path.dirname(to.baseline), { recursive: true })
+    writeFileSync(to.baseline, renderBaseline(plan.baseline))
+    mkdirSync(path.dirname(to.unmatched), { recursive: true })
+    writeFileSync(to.unmatched, renderUnmatchedList(listPlan.list))
+    io.log(`CRAP baseline: wrote ${countRows(plan.baseline)} rows to ${to.baseline}`)
+    io.log(`CRAP baseline: wrote ${countCounts(listPlan.list)} unmatched rows to ${to.unmatched}`)
     return 0
   } catch (e) {
     io.error(e instanceof Error ? e.message : String(e))
@@ -593,7 +610,7 @@ const UNMATCHED_PATH = 'crap/unmatched.tsv'
 export type ParsedArgs =
   | { command: 'measure'; coveragePaths: readonly string[]; acceptUnmatched: boolean }
   | { command: 'check'; githubActions: boolean }
-  | { command: 'baseline'; allowGrowth: boolean }
+  | { command: 'baseline'; allowGrowth: boolean; outputDir?: string }
   | {
       command: 'diff'
       basePath: string
@@ -608,20 +625,13 @@ export type ParsedArgs =
   | { command: 'usage'; message: string }
 
 const USAGE =
-  'Usage: cli.ts measure [--coverage <path>]... [--accept-unmatched] | check | baseline [--allow-growth] | diff [--base-ref <rev>] | diff --base <path> --base-unmatched <path> [--base-absent] [--base-unmatched-absent] [--head <path>] [--head-unmatched <path>]'
+  'Usage: cli.ts measure [--coverage <path>]... [--accept-unmatched] | check | baseline [--allow-growth] [--output-dir <dir>] | diff [--base-ref <rev>] | diff --base <path> --base-unmatched <path> [--base-absent] [--base-unmatched-absent] [--head <path>] [--head-unmatched <path>]. Every command also takes [--config <path>]'
 const usage = (detail: string): ParsedArgs => ({ command: 'usage', message: `${detail}\n${USAGE}` })
-
-const allowedFlags = (command: string): string[] => (command === 'baseline' ? ['--allow-growth'] : [])
 
 const COMMANDS = ['measure', 'check', 'baseline', 'diff']
 const DIFF_FLAGS = ['--base', '--head', '--base-unmatched', '--head-unmatched']
 
 type Env = Record<string, string | undefined>
-
-const build = (command: string, flags: string[], env: Env): ParsedArgs =>
-  command === 'check'
-    ? { command, githubActions: env.GITHUB_ACTIONS === 'true' }
-    : { command: 'baseline', allowGrowth: flags.includes('--allow-growth') }
 
 interface MeasureFlags {
   coveragePaths: string[]
@@ -699,14 +709,38 @@ const parseDiff = (flags: string[], env: Env): ParsedArgs => {
   }
 }
 
-const parseBoolFlags = (command: string, flags: string[], env: Env): ParsedArgs => {
-  const unknown = flags.find((f) => !allowedFlags(command).includes(f))
-  return unknown === undefined ? build(command, flags, env) : usage(`Unknown flag for ${command}: ${unknown}`)
+const parseCheck = (flags: string[], env: Env): ParsedArgs =>
+  flags.length === 0
+    ? { command: 'check', githubActions: env.GITHUB_ACTIONS === 'true' }
+    : usage(`Unknown flag for check: ${flags[0]}`)
+
+/** The value after a `--flag value` pair, or null when it is absent or is itself a flag. */
+const valueAfter = (flags: string[], i: number): string | null => {
+  const value = flags[i + 1]
+  return value === undefined || value.startsWith('--') ? null : value
+}
+
+const parseBaselineArgs = (flags: string[]): ParsedArgs => {
+  let allowGrowth = false
+  let outputDir: string | undefined
+  for (let i = 0; i < flags.length; i++) {
+    if (flags[i] === '--allow-growth') {
+      allowGrowth = true
+    } else if (flags[i] === '--output-dir') {
+      const value = valueAfter(flags, i++)
+      if (value === null) return usage('Missing value for --output-dir')
+      outputDir = value
+    } else {
+      return usage(`Unknown flag for baseline: ${flags[i]}`)
+    }
+  }
+  return outputDir === undefined ? { command: 'baseline', allowGrowth } : { command: 'baseline', allowGrowth, outputDir }
 }
 
 const parseKnown = (command: string, flags: string[], env: Env, config: CrapConfig): ParsedArgs => {
   if (command === 'diff') return parseDiff(flags, env)
-  return command === 'measure' ? parseMeasure(flags, config) : parseBoolFlags(command, flags, env)
+  if (command === 'measure') return parseMeasure(flags, config)
+  return command === 'baseline' ? parseBaselineArgs(flags) : parseCheck(flags, env)
 }
 
 /**
@@ -761,11 +795,12 @@ const checkOptions = (githubActions: boolean, config: CrapConfig): CheckOptions 
   threshold: config.threshold,
 })
 
-const baselineOptions = (allowGrowth: boolean, config: CrapConfig): BaselineOptions => ({
+const baselineOptions = (allowGrowth: boolean, outputDir: string | undefined, config: CrapConfig): BaselineOptions => ({
   reportPath: REPORT_PATH,
   baselinePath: BASELINE_PATH,
   unmatchedListPath: UNMATCHED_PATH,
   allowGrowth,
+  outputDir,
   threshold: config.threshold,
 })
 
@@ -790,7 +825,7 @@ const run = async (args: ParsedArgs, config: CrapConfig, repoRoot: string, io: I
       )
     case 'baseline':
       return measureThen(lintedOptions(config.coverage, true, repoRoot), config, io, () =>
-        runBaseline(baselineOptions(args.allowGrowth, config), io),
+        runBaseline(baselineOptions(args.allowGrowth, args.outputDir, config), io),
       )
     case 'diff':
       return runBaselineDiff(args, io)
@@ -805,16 +840,44 @@ const run = async (args: ParsedArgs, config: CrapConfig, repoRoot: string, io: I
   }
 }
 
-/** Loads `crap/config.json` from `cwd` first: an invalid config is exit 1 before any command runs. */
+interface SplitArgs {
+  /** The arguments without the `--config` pair. */
+  argv: string[]
+  configPath: string | undefined
+}
+
+/** Takes the `--config <path>` pair out of the arguments, wherever it sits; returns the error text for a repeat or a missing value. */
+const splitConfigFlag = (argv: string[]): SplitArgs | string => {
+  const rest: string[] = []
+  let configPath: string | undefined
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] !== '--config') {
+      rest.push(argv[i])
+      continue
+    }
+    const value = valueAfter(argv, i++)
+    if (value === null) return 'Missing value for --config'
+    if (configPath !== undefined) return 'Duplicate flag: --config'
+    configPath = value
+  }
+  return { argv: rest, configPath }
+}
+
+/** Loads the config (`--config`, else `crap/config.json`) from `cwd` first: an invalid config is exit 1 before any command runs. */
 export const runCli = async (argv: string[], env: Env, cwd: string, io: Io): Promise<number> => {
+  const split = splitConfigFlag(argv)
+  if (typeof split === 'string') {
+    io.error(`${split}\n${USAGE}`)
+    return 1
+  }
   let config: CrapConfig
   try {
-    config = loadConfig(cwd)
+    config = loadConfig(cwd, split.configPath)
   } catch (e) {
     io.error(e instanceof Error ? e.message : String(e))
     return 1
   }
-  return run(parseCommand(argv, env, config), config, cwd, io)
+  return run(parseCommand(split.argv, env, config), config, cwd, io)
 }
 
 if (require.main === module) {
