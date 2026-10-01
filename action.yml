@@ -22,7 +22,7 @@ inputs:
     default: .
 outputs:
   summary:
-    description: One line. With exit code 0, the last standard output line. With any other exit code, the last standard error line that is not a :: annotation. Each falls back to the other stream when it has no line.
+    description: "One line. With exit code 0, the last standard output line. With any other exit code, the last standard error line that is not a '::' annotation. Each falls back to the other stream when it has no line."
 runs:
   using: node24
   main: dist/action.cjs
