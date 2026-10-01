@@ -261,6 +261,7 @@ export const planBaselineUpdate = (
   existing: ScoreGroups | null,
   current: ScoreGroups,
   allowGrowth: boolean,
+  // Defaults only because the copied tests call this without a threshold; `run` always passes it.
   threshold: number = CRAP_THRESHOLD,
 ): { baseline: ScoreGroups; refused: Violation[] } => {
   // With no existing baseline there is nothing to ratchet against: freeze every offender.

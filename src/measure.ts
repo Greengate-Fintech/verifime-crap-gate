@@ -78,6 +78,7 @@ export const compileScope = (config: ScopeConfig): ScopeRules => {
 
 const DEFAULT_RULES = compileScope(DEFAULT_CONFIG)
 
+// The rules default only because the copied tests call this without them.
 export const isInScope = (relPath: string, rules: ScopeRules = DEFAULT_RULES): boolean =>
   rules.inScope(relPath)
 
@@ -108,6 +109,7 @@ export const toRepoRelative = (
   coverageKey: string,
   repoRoot: string,
   measured: ReadonlySet<string>,
+  // Defaults only because the copied tests call this without anchors.
   anchors: ReadonlySet<string> = DEFAULT_RULES.anchors,
 ): string | null => {
   const rel = path.relative(repoRoot, path.resolve(repoRoot, coverageKey))
@@ -374,6 +376,7 @@ export const measure = (
   coverage: Record<string, IstanbulFileCoverage>,
   repoRoot: string,
   readSource: ReadSource = readSourceSafely,
+  // Defaults only because the copied tests call this without a config; `compute` always passes it.
   config: ScopeConfig = DEFAULT_CONFIG,
 ): Measurement => {
   const rules = compileScope(config)

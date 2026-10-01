@@ -1,33 +1,34 @@
 import { readFileSync } from 'fs'
 import path from 'path'
+import { CRAP_THRESHOLD } from './ratchet'
 
 // Loads and validates `crap/config.json`. Pure validation lives in parseConfig; loadConfig only
 // adds the file read. Every key is optional and the defaults reproduce the original gate exactly.
 
 export interface CrapConfig {
   /** Repo-relative directories whose files are measured. */
-  scope: string[]
+  readonly scope: readonly string[]
   /** Path segment names that start a suffix when a coverage path is joined to a measured file. */
-  anchors: string[]
+  readonly anchors: readonly string[]
   /** File extensions measured, each with its leading dot. */
-  extensions: string[]
+  readonly extensions: readonly string[]
   /** Regular-expression sources added to the built-in exclude, which always applies. */
-  exclude: string[]
+  readonly exclude: readonly string[]
   /** Coverage files, used when no `--coverage` flag is given. */
-  coverage: string[]
+  readonly coverage: readonly string[]
   /** A function scoring above this is an offender. */
-  threshold: number
+  readonly threshold: number
 }
 
 export const CONFIG_DISPLAY = 'crap/config.json'
 
-export const DEFAULT_CONFIG: Readonly<CrapConfig> = {
+export const DEFAULT_CONFIG: CrapConfig = {
   scope: ['src', 'lib', 'bin', 'cdk/src', 'cdk/lib', 'cdk/bin'],
   anchors: ['src', 'lib', 'bin', 'cdk'],
   extensions: ['.ts'],
   exclude: [],
   coverage: ['coverage/coverage-final.json', 'cdk/coverage/coverage-final.json'],
-  threshold: 8,
+  threshold: CRAP_THRESHOLD,
 }
 
 /** Returns the problem with a value, or null when it is valid. */
@@ -90,8 +91,9 @@ const invalid = (problem: string): Error => new Error(`Invalid ${CONFIG_DISPLAY}
 const parseJson = (text: string): unknown => {
   try {
     return JSON.parse(text)
-  } catch {
-    throw new Error(`Unreadable ${CONFIG_DISPLAY} (not valid JSON)`)
+  } catch (cause) {
+    const detail = cause instanceof Error ? cause.message : String(cause)
+    throw new Error(`Unreadable ${CONFIG_DISPLAY} (not valid JSON): ${detail}`, { cause })
   }
 }
 
@@ -107,14 +109,7 @@ const validate = (raw: Record<string, unknown>): void => {
 
 const withDefaults = (raw: Record<string, unknown>): CrapConfig => {
   const merged = { ...DEFAULT_CONFIG, ...raw } as CrapConfig
-  return {
-    ...merged,
-    scope: merged.scope.map(trimSlashes),
-    anchors: [...merged.anchors],
-    extensions: [...merged.extensions],
-    exclude: [...merged.exclude],
-    coverage: [...merged.coverage],
-  }
+  return { ...merged, scope: merged.scope.map(trimSlashes) }
 }
 
 /** Throws an Error naming the file and the key when the text is not a valid config. */
@@ -132,9 +127,10 @@ export const loadConfig = (repoRoot: string): CrapConfig => {
   let text: string
   try {
     text = readFileSync(path.join(repoRoot, CONFIG_DISPLAY), 'utf8')
-  } catch (e) {
-    if (isMissing(e)) return parseConfig('{}')
-    throw new Error(`Cannot read ${CONFIG_DISPLAY}`)
+  } catch (cause) {
+    if (isMissing(cause)) return parseConfig('{}')
+    const code = (cause as NodeJS.ErrnoException).code ?? 'unknown error'
+    throw new Error(`Cannot read ${CONFIG_DISPLAY} (${code})`, { cause })
   }
   return parseConfig(text)
 }

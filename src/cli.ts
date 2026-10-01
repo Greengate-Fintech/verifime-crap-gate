@@ -43,13 +43,13 @@ import {
 export interface MeasureOptions {
   eslintPath: string
   /** Every coverage file to merge (one per package); a missing one fails the measure. */
-  coveragePaths: string[]
+  coveragePaths: readonly string[]
   unmatchedListPath: string
   /** Treat every unmatched function as listed: only for regenerating the baseline. */
   acceptUnmatched: boolean
   outPath: string
   repoRoot: string
-  /** Scope, anchors, extensions, exclude and threshold; the defaults when absent. */
+  /** Scope, anchors, extensions, exclude and threshold. Optional only because the copied tests omit it; `run` always sets it. */
   config?: CrapConfig
 }
 
@@ -75,6 +75,7 @@ const readJson = <T>(file: string, what: string): T => {
   }
 }
 
+// The threshold defaults only because the copied tests call this without one.
 export const summarise = (m: Measurement, threshold: number = CRAP_THRESHOLD): CrapSummary => {
   const over = m.functions.filter((f) => f.crap > threshold)
   return {
@@ -116,7 +117,7 @@ const writeReport = (outPath: string, outcome: Outcome, summary: CrapSummary): v
 }
 
 /** Merges the per-package coverage files. Keys are absolute paths, so a repeat is a mistake, not a merge. */
-const readCoverage = (paths: string[]): Record<string, IstanbulFileCoverage> => {
+const readCoverage = (paths: readonly string[]): Record<string, IstanbulFileCoverage> => {
   if (paths.length === 0) throw new Error('No coverage input given')
   const merged: Record<string, IstanbulFileCoverage> = {}
   for (const file of paths) {
@@ -185,7 +186,7 @@ export interface CheckOptions {
   reportPath: string
   baselinePath: string
   githubActions: boolean
-  /** The offender threshold; the default when absent. */
+  /** Optional only because the copied tests omit it; `run` always sets it. */
   threshold?: number
 }
 
@@ -194,7 +195,7 @@ export interface BaselineOptions {
   baselinePath: string
   unmatchedListPath: string
   allowGrowth: boolean
-  /** The offender threshold; the default when absent. */
+  /** Optional only because the copied tests omit it; `run` always sets it. */
   threshold?: number
 }
 
@@ -485,7 +486,7 @@ const BASELINE_PATH = 'crap/baseline.tsv'
 const UNMATCHED_PATH = 'crap/unmatched.tsv'
 
 export type ParsedArgs =
-  | { command: 'measure'; coveragePaths: string[]; acceptUnmatched: boolean }
+  | { command: 'measure'; coveragePaths: readonly string[]; acceptUnmatched: boolean }
   | { command: 'check'; githubActions: boolean }
   | { command: 'baseline'; allowGrowth: boolean }
   | {
@@ -602,7 +603,10 @@ const parseKnown = (command: string, flags: string[], env: Env, config: CrapConf
   return command === 'measure' ? parseMeasure(flags, config) : parseBoolFlags(command, flags, env)
 }
 
-/** A `--coverage` flag overrides the config's coverage files, which override the defaults. */
+/**
+ * A `--coverage` flag overrides the config's coverage files, which override the defaults.
+ * The config defaults only because the copied tests call this without one; `runCli` always passes it.
+ */
 export const parseArgs = (argv: string[], env: Env, config: CrapConfig = DEFAULT_CONFIG): ParsedArgs => {
   const [command = '', ...flags] = argv
   if (!COMMANDS.includes(command)) return usage(`Unknown or missing subcommand: ${command || '(none)'}`)
@@ -610,7 +614,7 @@ export const parseArgs = (argv: string[], env: Env, config: CrapConfig = DEFAULT
 }
 
 const measureOptions = (
-  args: { coveragePaths: string[]; acceptUnmatched: boolean },
+  args: { coveragePaths: readonly string[]; acceptUnmatched: boolean },
   config: CrapConfig,
   repoRoot: string,
 ): MeasureOptions => ({

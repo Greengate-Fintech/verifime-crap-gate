@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'fs'
 import os from 'os'
 import path from 'path'
 import { describe, expect, it } from 'vitest'
+import { CRAP_THRESHOLD } from '../src/ratchet'
 import { CONFIG_DISPLAY, DEFAULT_CONFIG, loadConfig, parseConfig } from '../src/config'
 
 describe('DEFAULT_CONFIG', () => {
@@ -22,9 +23,8 @@ describe('parseConfig: defaults', () => {
     expect(parseConfig('{}')).toEqual(DEFAULT_CONFIG)
   })
 
-  it('returns a copy, so a caller cannot change the defaults', () => {
-    parseConfig('{}').scope.push('extra')
-    expect(DEFAULT_CONFIG.scope).toHaveLength(6)
+  it('takes the threshold from the one definition the ratchet uses', () => {
+    expect(DEFAULT_CONFIG.threshold).toBe(CRAP_THRESHOLD)
   })
 })
 
@@ -57,7 +57,9 @@ describe('parseConfig: failures', () => {
   }
 
   it('fails on malformed JSON, naming the file', () => {
-    expect(failure('{')).toBe(`Unreadable ${CONFIG_DISPLAY} (not valid JSON)`)
+    const message = failure('{')
+    expect(message.startsWith(`Unreadable ${CONFIG_DISPLAY} (not valid JSON): `)).toBe(true)
+    expect(message).toMatch(/position \d+/)
   })
 
   it.each(['[]', '"x"', '3', 'null'])('fails when the top level is %s', (text) => {
@@ -158,6 +160,6 @@ describe('loadConfig', () => {
   it('fails when the path is not a readable file', () => {
     const root = tempRoot()
     mkdirSync(path.join(root, 'crap/config.json'), { recursive: true })
-    expect(() => loadConfig(root)).toThrow(`Cannot read ${CONFIG_DISPLAY}`)
+    expect(() => loadConfig(root)).toThrow(`Cannot read ${CONFIG_DISPLAY} (EISDIR)`)
   })
 })
