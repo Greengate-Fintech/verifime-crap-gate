@@ -2,8 +2,6 @@
 
 A CRAP ratchet gate for TypeScript repositories. It scores each function by complexity and test coverage, then fails a build when the set of high-scoring functions grows or a recorded score worsens.
 
-Status: the gate logic has been extracted and is tested here. Use as a GitHub Action or a local CLI arrives in a later release.
-
 ## What the gate measures
 
 CRAP is computed per function as:
@@ -18,9 +16,11 @@ The threshold is 8. A function scoring above 8 is an offender.
 
 Offenders are recorded in a baseline. The baseline only shrinks:
 
-- A function that is new, or scores worse than its recorded score beyond a tolerance of 0.05, fails the check.
-- A recorded function that improves or drops below the threshold can be cleared by regenerating the baseline.
-- Growth in the baseline needs an explicit `--allow-growth`.
+- A function above the threshold that is not in the baseline fails the check.
+- A recorded function whose score rose fails the check. A rise is the current score minus the recorded score, rounded to 3 decimal places, above a tolerance of 0.05.
+- A recorded function that now scores at or below the threshold, or that has gone (removed, renamed or merged, so fewer occurrences than recorded rows), is stale. `check` exits 1 until the baseline is regenerated.
+- A recorded function that improves but stays above the threshold passes.
+- Growth in the baseline needs `baseline --allow-growth`.
 
 Keys carry no line number, so an unrelated edit above a function is not churn.
 
@@ -32,7 +32,7 @@ Tab-separated, one row per scored occurrence of an offender:
 
     file<TAB>symbol<TAB>score
 
-Scores have 3 decimal places. Lines that are empty or start with `#` are ignored. The file begins with a comment header. A malformed row is an error.
+Generated files write scores with 3 decimal places. The parser accepts any plain non-negative decimal. Lines that are empty or start with `#` are ignored. The file begins with a comment header. A malformed row is an error.
 
 ### `crap/unmatched.tsv`
 
@@ -44,16 +44,27 @@ The list only shrinks. An unmatched function that is not listed fails the measur
 
 ### Report
 
-`coverage/crap-report.json` holds the scored functions from `measure`. The `check` command reads it. A failed `measure` removes any earlier report.
+`coverage/crap-report.json` is written by `measure`. Its fields are `summary`, `functions`, `unmatched`, `listedUnmatched`, `staleUnmatched` and `acceptedUnmatched`.
+
+`measure` deletes any earlier report first. It then writes a new report even when it exits 1 (problems, unmatched functions, stale entries, nothing measured). It writes no report only when it throws, for example on missing or unreadable input.
+
+`check` refuses a report made with `--accept-unmatched`.
+
+## Commands
+
+The entry point has four commands. Flags as in its usage string:
+
+- `measure [--coverage <path>]... [--accept-unmatched]`. Without `--coverage`, it reads `coverage/coverage-final.json` and `cdk/coverage/coverage-final.json`.
+- `check`
+- `baseline [--allow-growth]`
+- `diff --base <path> --base-unmatched <path> [--base-absent] [--base-unmatched-absent] [--head <path>] [--head-unmatched <path>]`
+
+The entry point reads the ESLint report from `coverage/crap-eslint.json`.
 
 ## Exit codes
 
 - `0`: pass.
-- `1`: any failure, including missing input, nothing measured, an unmatched function that is not listed, growth against the baseline, or a malformed file.
-
-## Commands
-
-The code provides four commands: `measure`, `check`, `baseline` and `diff`. The copied entry point still expects the report at `coverage/crap-eslint.json` and the scripts named in its messages. Packaging and configuration come in later releases.
+- `1`: any failure. This includes missing input, nothing measured, an unmatched function that is not listed, growth against the baseline, a malformed file, a failing `diff` and a usage error.
 
 ## Development
 
