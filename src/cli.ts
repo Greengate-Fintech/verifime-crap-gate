@@ -2,6 +2,8 @@ import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSyn
 import path from 'path'
 import { DEFAULT_CONFIG, loadConfig } from './config'
 import type { CrapConfig } from './config'
+import { lintScope } from './eslint'
+import { readBaseFile } from './git'
 import { measure } from './measure'
 import {
   BASELINE_DISPLAY,
@@ -41,7 +43,10 @@ import {
 } from './unmatched'
 
 export interface MeasureOptions {
+  /** A saved ESLint JSON report. Read only when `eslintResults` is absent; the copied tests feed the measure this way. */
   eslintPath: string
+  /** Lint results already in hand (the in-process run). They take precedence over `eslintPath`. */
+  eslintResults?: readonly EslintFileResult[]
   /** Every coverage file to merge (one per package); a missing one fails the measure. */
   coveragePaths: readonly string[]
   unmatchedListPath: string
@@ -129,14 +134,18 @@ const readCoverage = (paths: readonly string[]): Record<string, IstanbulFileCove
   return merged
 }
 
+const parseListText = (text: string, where: string): UnmatchedGroups => {
+  try {
+    return parseUnmatchedList(text)
+  } catch (e) {
+    throw new Error(`${e instanceof Error ? e.message : String(e)} (${where})`)
+  }
+}
+
 /** A missing list is an empty one: every unmatched function then fails, so it can only be stricter. */
 const readUnmatchedList = (listPath: string): UnmatchedGroups => {
   if (!existsSync(listPath)) return new Map()
-  try {
-    return parseUnmatchedList(readFileSync(listPath, 'utf8'))
-  } catch (e) {
-    throw new Error(`${e instanceof Error ? e.message : String(e)} (${listPath})`)
-  }
+  return parseListText(readFileSync(listPath, 'utf8'), listPath)
 }
 
 interface Outcome {
@@ -154,8 +163,13 @@ const resolveUnmatched = (m: Measurement, opts: MeasureOptions): Outcome => {
   return { measurement: { functions, unmatched: failing, problems: m.problems }, listed, stale, accepted: opts.acceptUnmatched }
 }
 
+const eslintInput = (opts: MeasureOptions): EslintFileResult[] => {
+  if (opts.eslintResults !== undefined) return [...opts.eslintResults]
+  return readJson<EslintFileResult[]>(opts.eslintPath, 'ESLint')
+}
+
 const compute = (opts: MeasureOptions, config: CrapConfig): Outcome => {
-  const eslint = readJson<EslintFileResult[]>(opts.eslintPath, 'ESLint')
+  const eslint = eslintInput(opts)
   const coverage = readCoverage(opts.coveragePaths)
   // ESLint and Istanbul report real paths, so a symlinked root (macOS /tmp -> /private/tmp)
   // must be resolved before joining, or every path would fall outside the root.
@@ -176,6 +190,24 @@ export const runMeasure = (opts: MeasureOptions, io: Io): number => {
     problems.forEach((p) => io.error(p))
     io.log(summaryLine(summary))
     return problems.length === 0 ? 0 : 1
+  } catch (e) {
+    io.error(e instanceof Error ? e.message : String(e))
+    return 1
+  }
+}
+
+export type LintedMeasureOptions = Omit<MeasureOptions, 'eslintPath' | 'eslintResults' | 'config'>
+
+/**
+ * Lints the configured scope in-process, then measures. Returns the process exit code.
+ * The earlier report is deleted first, so a run that fails while linting leaves none behind.
+ */
+export const runMeasureLinted = async (opts: LintedMeasureOptions, config: CrapConfig, io: Io): Promise<number> => {
+  try {
+    rmSync(opts.outPath, { force: true })
+    // ESLint reports real paths, so the root it works from must be the resolved one.
+    const eslintResults = await lintScope(realpathSync(opts.repoRoot), config)
+    return runMeasure({ ...opts, eslintPath: '', eslintResults, config }, io)
   } catch (e) {
     io.error(e instanceof Error ? e.message : String(e))
     return 1
@@ -271,6 +303,14 @@ const refuseAcceptedReport = (reportPath: string): void => {
   }
 }
 
+const parseBaselineText = (text: string, where: string): ScoreGroups => {
+  try {
+    return parseBaseline(text)
+  } catch (e) {
+    throw new Error(`${e instanceof Error ? e.message : String(e)} (${where})`)
+  }
+}
+
 const readBaseline = (baselinePath: string): ScoreGroups => {
   let text: string
   try {
@@ -278,11 +318,7 @@ const readBaseline = (baselinePath: string): ScoreGroups => {
   } catch {
     throw new Error(`Missing baseline input: ${baselinePath}`)
   }
-  try {
-    return parseBaseline(text)
-  } catch (e) {
-    throw new Error(`${e instanceof Error ? e.message : String(e)} (${baselinePath})`)
-  }
+  return parseBaselineText(text, baselinePath)
 }
 
 const violationText = (v: Violation): string =>
@@ -442,24 +478,81 @@ interface DiffFindings {
 const note = (baseHas: boolean, what: string, basePath: string): string =>
   baseHas ? `no ${what} growth against the base` : `no ${what} on the base, nothing to compare: ${basePath}`
 
+/** One base file: its text and where it came from, or null when the base does not have it. */
+interface BaseFile {
+  text: string
+  where: string
+}
+
+interface BaseFiles {
+  baseline: BaseFile | null
+  unmatched: BaseFile | null
+  /** What the pass note names for an absent file. */
+  baselineLabel: string
+  unmatchedLabel: string
+}
+
 /** A missing base file is the initial freeze only when the caller declared it absent; otherwise it is an error. */
-const baseExists = (basePath: string, declaredAbsent: boolean): boolean => {
-  if (existsSync(basePath)) return true
-  if (declaredAbsent) return false
+const baseFileFromPath = (basePath: string, declaredAbsent: boolean): BaseFile | null => {
+  if (existsSync(basePath)) return { text: readFileSync(basePath, 'utf8'), where: basePath }
+  if (declaredAbsent) return null
   throw new Error(`Missing base input: ${basePath} (pass the matching absent flag only if the base commit has no such file)`)
 }
 
+const baseFilesFromPaths = (opts: DiffOptions): BaseFiles => ({
+  baseline: baseFileFromPath(opts.basePath, opts.baseAbsent),
+  unmatched: baseFileFromPath(opts.baseUnmatchedPath, opts.baseUnmatchedAbsent),
+  baselineLabel: opts.basePath,
+  unmatchedLabel: opts.baseUnmatchedPath,
+})
+
+/** Reads both base files from the revision; a path the revision lacks is absent, any git error throws. */
+const baseFilesFromRef = (repoRoot: string, rev: string): BaseFiles => {
+  const at = (display: string): BaseFile | null => {
+    const text = readBaseFile(repoRoot, rev, display)
+    return text === null ? null : { text, where: `${rev}:${display}` }
+  }
+  return {
+    baseline: at(BASELINE_DISPLAY),
+    unmatched: at(UNMATCHED_DISPLAY),
+    baselineLabel: `${rev}:${BASELINE_DISPLAY}`,
+    unmatchedLabel: `${rev}:${UNMATCHED_DISPLAY}`,
+  }
+}
+
+interface HeadPaths {
+  headPath: string
+  headUnmatchedPath: string
+  githubActions: boolean
+}
+
 /** A file the base does not have is the initial freeze: nothing to compare against, so no growth. */
-const diffFindings = (opts: DiffOptions): DiffFindings => {
+const diffFindings = (opts: HeadPaths, loadBase: () => BaseFiles): DiffFindings => {
   const head = readBaseline(opts.headPath)
   const headList = readUnmatchedList(opts.headUnmatchedPath)
-  const baseHas = baseExists(opts.basePath, opts.baseAbsent)
-  const baseListHas = baseExists(opts.baseUnmatchedPath, opts.baseUnmatchedAbsent)
+  const base = loadBase()
   return {
-    grown: baseHas ? findGrowth(readBaseline(opts.basePath), head) : [],
-    listGrown: baseListHas ? findUnmatchedGrowth(readUnmatchedList(opts.baseUnmatchedPath), headList) : [],
-    notes: [note(baseHas, 'baseline', opts.basePath), note(baseListHas, 'unmatched list', opts.baseUnmatchedPath)],
+    grown: base.baseline ? findGrowth(parseBaselineText(base.baseline.text, base.baseline.where), head) : [],
+    listGrown: base.unmatched
+      ? findUnmatchedGrowth(parseListText(base.unmatched.text, base.unmatched.where), headList)
+      : [],
+    notes: [note(base.baseline !== null, 'baseline', base.baselineLabel), note(base.unmatched !== null, 'unmatched list', base.unmatchedLabel)],
   }
+}
+
+const finishDiff = (findings: DiffFindings, githubActions: boolean, io: Io): number => {
+  const { grown, listGrown, notes } = findings
+  if (grown.length + listGrown.length > 0) {
+    reportGrowth(grown, listGrown, githubActions, io)
+    return 1
+  }
+  io.log(`CRAP baseline diff: pass (${notes.join('; ')})`)
+  return 0
+}
+
+const failWith = (e: unknown, io: Io): number => {
+  io.error(e instanceof Error ? e.message : String(e))
+  return 1
 }
 
 /**
@@ -468,16 +561,27 @@ const diffFindings = (opts: DiffOptions): DiffFindings => {
  */
 export const runBaselineDiff = (opts: DiffOptions, io: Io): number => {
   try {
-    const { grown, listGrown, notes } = diffFindings(opts)
-    if (grown.length + listGrown.length > 0) {
-      reportGrowth(grown, listGrown, opts.githubActions, io)
-      return 1
-    }
-    io.log(`CRAP baseline diff: pass (${notes.join('; ')})`)
-    return 0
+    return finishDiff(diffFindings(opts, () => baseFilesFromPaths(opts)), opts.githubActions, io)
   } catch (e) {
-    io.error(e instanceof Error ? e.message : String(e))
-    return 1
+    return failWith(e, io)
+  }
+}
+
+export interface DiffRefOptions {
+  repoRoot: string
+  /** The revision whose `crap/` files are the base, for example `HEAD^1`. */
+  baseRef: string
+  headPath: string
+  headUnmatchedPath: string
+  githubActions: boolean
+}
+
+/** As `runBaselineDiff`, but the base files are read from a git revision, never from the working tree. */
+export const runBaselineDiffAtRef = (opts: DiffRefOptions, io: Io): number => {
+  try {
+    return finishDiff(diffFindings(opts, () => baseFilesFromRef(opts.repoRoot, opts.baseRef)), opts.githubActions, io)
+  } catch (e) {
+    return failWith(e, io)
   }
 }
 
@@ -499,10 +603,11 @@ export type ParsedArgs =
       baseUnmatchedAbsent: boolean
       githubActions: boolean
     }
+  | { command: 'diff-ref'; baseRef: string; githubActions: boolean }
   | { command: 'usage'; message: string }
 
 const USAGE =
-  'Usage: cli.ts measure [--coverage <path>]... [--accept-unmatched] | check | baseline [--allow-growth] | diff --base <path> --base-unmatched <path> [--base-absent] [--base-unmatched-absent] [--head <path>] [--head-unmatched <path>]'
+  'Usage: cli.ts measure [--coverage <path>]... [--accept-unmatched] | check | baseline [--allow-growth] | diff [--base-ref <rev>] | diff --base <path> --base-unmatched <path> [--base-absent] [--base-unmatched-absent] [--head <path>] [--head-unmatched <path>]'
 const usage = (detail: string): ParsedArgs => ({ command: 'usage', message: `${detail}\n${USAGE}` })
 
 const allowedFlags = (command: string): string[] => (command === 'baseline' ? ['--allow-growth'] : [])
@@ -613,42 +718,86 @@ export const parseArgs = (argv: string[], env: Env, config: CrapConfig = DEFAULT
   return parseKnown(command, flags, env, config)
 }
 
-const measureOptions = (
-  args: { coveragePaths: readonly string[]; acceptUnmatched: boolean },
-  config: CrapConfig,
-  repoRoot: string,
-): MeasureOptions => ({
-  eslintPath: 'coverage/crap-eslint.json',
-  coveragePaths: args.coveragePaths,
+const DEFAULT_BASE_REF = 'HEAD^1'
+const FILE_DIFF_FLAGS = [...DIFF_FLAGS, ...DIFF_SWITCHES]
+
+/** `diff` with no file-path flag reads the base from a git revision; with any of them it is the file form. */
+const isRefDiff = (flags: string[]): boolean => !flags.some((f) => FILE_DIFF_FLAGS.includes(f))
+
+const parseDiffRef = (flags: string[], env: Env): ParsedArgs => {
+  if (flags.length === 0) return { command: 'diff-ref', baseRef: DEFAULT_BASE_REF, githubActions: env.GITHUB_ACTIONS === 'true' }
+  if (flags[0] !== '--base-ref') return usage(`Unknown flag for diff: ${flags[0]}`)
+  if (flags.length === 1 || flags[1].startsWith('--')) return usage('Missing value for --base-ref')
+  if (flags.length > 2) return usage(`Unexpected argument for diff: ${flags[2]}`)
+  return { command: 'diff-ref', baseRef: flags[1], githubActions: env.GITHUB_ACTIONS === 'true' }
+}
+
+const mixesBaseRef = (flags: string[]): boolean => flags.includes('--base-ref') && !isRefDiff(flags)
+
+/**
+ * The CLI's parser. `diff` without a file-path flag takes `--base-ref <rev>` (default `HEAD^1`);
+ * everything else is `parseArgs`, which keeps the file-path form of `diff`.
+ */
+export const parseCommand = (argv: string[], env: Env, config: CrapConfig): ParsedArgs => {
+  const [command = '', ...flags] = argv
+  if (command !== 'diff') return parseArgs(argv, env, config)
+  if (mixesBaseRef(flags)) return usage('--base-ref cannot be combined with the file-path flags of diff')
+  return isRefDiff(flags) ? parseDiffRef(flags, env) : parseArgs(argv, env, config)
+}
+
+const lintedOptions = (coveragePaths: readonly string[], acceptUnmatched: boolean, repoRoot: string): LintedMeasureOptions => ({
+  coveragePaths,
   unmatchedListPath: UNMATCHED_PATH,
-  acceptUnmatched: args.acceptUnmatched,
+  acceptUnmatched,
   outPath: REPORT_PATH,
   repoRoot,
-  config,
 })
 
-const run = (args: ParsedArgs, config: CrapConfig, repoRoot: string, io: Io): number => {
+const checkOptions = (githubActions: boolean, config: CrapConfig): CheckOptions => ({
+  reportPath: REPORT_PATH,
+  baselinePath: BASELINE_PATH,
+  githubActions,
+  threshold: config.threshold,
+})
+
+const baselineOptions = (allowGrowth: boolean, config: CrapConfig): BaselineOptions => ({
+  reportPath: REPORT_PATH,
+  baselinePath: BASELINE_PATH,
+  unmatchedListPath: UNMATCHED_PATH,
+  allowGrowth,
+  threshold: config.threshold,
+})
+
+/** Measure first; the ratchet runs only when the measure passed. */
+const measureThen = async (
+  opts: LintedMeasureOptions,
+  config: CrapConfig,
+  io: Io,
+  next: () => number,
+): Promise<number> => {
+  const code = await runMeasureLinted(opts, config, io)
+  return code === 0 ? next() : code
+}
+
+const run = async (args: ParsedArgs, config: CrapConfig, repoRoot: string, io: Io): Promise<number> => {
   switch (args.command) {
     case 'measure':
-      return runMeasure(measureOptions(args, config, repoRoot), io)
+      return runMeasureLinted(lintedOptions(args.coveragePaths, args.acceptUnmatched, repoRoot), config, io)
     case 'check':
-      return runCheck(
-        { reportPath: REPORT_PATH, baselinePath: BASELINE_PATH, githubActions: args.githubActions, threshold: config.threshold },
-        io,
+      return measureThen(lintedOptions(config.coverage, false, repoRoot), config, io, () =>
+        runCheck(checkOptions(args.githubActions, config), io),
       )
     case 'baseline':
-      return runBaseline(
-        {
-          reportPath: REPORT_PATH,
-          baselinePath: BASELINE_PATH,
-          unmatchedListPath: UNMATCHED_PATH,
-          allowGrowth: args.allowGrowth,
-          threshold: config.threshold,
-        },
-        io,
+      return measureThen(lintedOptions(config.coverage, true, repoRoot), config, io, () =>
+        runBaseline(baselineOptions(args.allowGrowth, config), io),
       )
     case 'diff':
       return runBaselineDiff(args, io)
+    case 'diff-ref':
+      return runBaselineDiffAtRef(
+        { repoRoot, baseRef: args.baseRef, headPath: BASELINE_PATH, headUnmatchedPath: UNMATCHED_PATH, githubActions: args.githubActions },
+        io,
+      )
     default:
       io.error(args.message)
       return 1
@@ -656,7 +805,7 @@ const run = (args: ParsedArgs, config: CrapConfig, repoRoot: string, io: Io): nu
 }
 
 /** Loads `crap/config.json` from `cwd` first: an invalid config is exit 1 before any command runs. */
-export const runCli = (argv: string[], env: Env, cwd: string, io: Io): number => {
+export const runCli = async (argv: string[], env: Env, cwd: string, io: Io): Promise<number> => {
   let config: CrapConfig
   try {
     config = loadConfig(cwd)
@@ -664,7 +813,11 @@ export const runCli = (argv: string[], env: Env, cwd: string, io: Io): number =>
     io.error(e instanceof Error ? e.message : String(e))
     return 1
   }
-  return run(parseArgs(argv, env, config), config, cwd, io)
+  return run(parseCommand(argv, env, config), config, cwd, io)
 }
 
-if (require.main === module) process.exit(runCli(process.argv.slice(2), process.env, process.cwd(), console))
+if (require.main === module) {
+  void runCli(process.argv.slice(2), process.env, process.cwd(), console).then((code) => {
+    process.exitCode = code
+  })
+}

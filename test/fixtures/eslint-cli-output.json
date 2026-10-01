@@ -1,0 +1,84 @@
+[
+  {
+    "filePath": "/fake/repo/src/sample.ts",
+    "messages": [
+      {
+        "ruleId": "complexity",
+        "severity": 1,
+        "message": "Function 'namedFunction' has a complexity of 2. Maximum allowed is 0.",
+        "line": 6,
+        "column": 8,
+        "nodeType": "FunctionDeclaration",
+        "messageId": "complex",
+        "endLine": 6,
+        "endColumn": 30
+      },
+      {
+        "ruleId": "complexity",
+        "severity": 1,
+        "message": "Method 'run' has a complexity of 2. Maximum allowed is 0.",
+        "line": 14,
+        "column": 3,
+        "nodeType": "FunctionExpression",
+        "messageId": "complex",
+        "endLine": 14,
+        "endColumn": 6
+      },
+      {
+        "ruleId": "complexity",
+        "severity": 1,
+        "message": "Async arrow function has a complexity of 1. Maximum allowed is 0.",
+        "line": 19,
+        "column": 47,
+        "nodeType": "ArrowFunctionExpression",
+        "messageId": "complex",
+        "endLine": 19,
+        "endColumn": 49
+      },
+      {
+        "ruleId": "complexity",
+        "severity": 1,
+        "message": "Arrow function has a complexity of 2. Maximum allowed is 0.",
+        "line": 23,
+        "column": 45,
+        "nodeType": "ArrowFunctionExpression",
+        "messageId": "complex",
+        "endLine": 23,
+        "endColumn": 47
+      },
+      {
+        "ruleId": "complexity",
+        "severity": 1,
+        "message": "Arrow function has a complexity of 1. Maximum allowed is 0.",
+        "line": 30,
+        "column": 46,
+        "nodeType": "ArrowFunctionExpression",
+        "messageId": "complex",
+        "endLine": 30,
+        "endColumn": 48
+      },
+      {
+        "ruleId": "complexity",
+        "severity": 1,
+        "message": "Arrow function has a complexity of 1. Maximum allowed is 0.",
+        "line": 34,
+        "column": 42,
+        "nodeType": "ArrowFunctionExpression",
+        "messageId": "complex",
+        "endLine": 34,
+        "endColumn": 44
+      },
+      {
+        "ruleId": "complexity",
+        "severity": 1,
+        "message": "Arrow function has a complexity of 2. Maximum allowed is 0.",
+        "line": 34,
+        "column": 64,
+        "nodeType": "ArrowFunctionExpression",
+        "messageId": "complex",
+        "endLine": 34,
+        "endColumn": 66
+      }
+    ]
+  }
+]
