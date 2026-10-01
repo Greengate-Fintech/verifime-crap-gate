@@ -56,12 +56,37 @@ The list only shrinks. An unmatched function that is not listed fails the measur
 
 The entry point has four commands. Flags as in its usage string:
 
-- `measure [--coverage <path>]... [--accept-unmatched]`. Without `--coverage`, it reads `coverage/coverage-final.json` and `cdk/coverage/coverage-final.json`.
+- `measure [--coverage <path>]... [--accept-unmatched]`. Without `--coverage`, it reads the `coverage` files from the config (see Configuration), which default to `coverage/coverage-final.json` and `cdk/coverage/coverage-final.json`.
 - `check`
 - `baseline [--allow-growth]`
 - `diff --base <path> --base-unmatched <path> [--base-absent] [--base-unmatched-absent] [--head <path>] [--head-unmatched <path>]`
 
 The entry point reads the ESLint report from `coverage/crap-eslint.json`.
+
+## Configuration
+
+The gate reads `crap/config.json` from the directory it runs in. The file is optional. Without it, every key has the default below. Every key is optional, and a file that sets none of them behaves like no file.
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `scope` | array of strings | `["src", "lib", "bin", "cdk/src", "cdk/lib", "cdk/bin"]` | Repo-relative directories whose files are measured. A file is measured when it sits under one of them. |
+| `anchors` | array of strings | `["src", "lib", "bin", "cdk"]` | Path segment names used to join a coverage path from another machine to a measured file. The join tries each anchor segment of the coverage path, last first. |
+| `extensions` | array of strings | `[".ts"]` | File extensions measured, each with its leading dot. `.tsx` is measured only when listed. |
+| `exclude` | array of strings | `[]` | Regular-expression sources matched against the repo-relative path. A match is not measured. They are added to the built-in exclude, which always applies (tests, mocks, fixtures, generated and build folders, declaration and config files). |
+| `coverage` | array of strings | `["coverage/coverage-final.json", "cdk/coverage/coverage-final.json"]` | Istanbul coverage files that `measure` reads. |
+| `threshold` | number | `8` | A function scoring above it is an offender. It applies to the `measure` summary and to `check` and `baseline`. It must be finite and greater than 0. |
+
+Coverage files, highest precedence first: the `--coverage` flag of `measure`, then `coverage` in the config, then the default.
+
+The gate validates the file before it runs any command. It exits 1, naming `crap/config.json` and the key, when:
+
+- the file is not valid JSON, or is not a JSON object;
+- a key is not in the table above;
+- a value has the wrong type;
+- `scope`, `anchors`, `extensions` or `coverage` is an empty array;
+- a `scope` entry is not a repo-relative directory, an `anchors` entry is not one path segment name, an `extensions` entry does not start with a dot, or an `exclude` entry is not a valid regular expression.
+
+The baseline and unmatched files do not record the threshold. Changing `threshold` changes which functions are offenders, so regenerate both files after a change.
 
 ## Exit codes
 
