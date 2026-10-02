@@ -247,6 +247,7 @@ The package's `bin` is `crap-gate`, which is `dist/cli.cjs`.
 - `dist/cli.cjs` bundles the gate, ESLint, typescript-eslint and TypeScript. It has no static `require` of a module that is not a Node built-in. ESLint and TypeScript keep dynamic loading sites (`require`, `import()`, `createRequire`) in the bundle, and the gate's options never reach them: it does no config lookup and loads no plugins. So it never resolves a module from the project it measures. A project with a different TypeScript, its own ESLint or its own ESLint config gets the same result.
 - `dist/action.cjs` is the action entry. It requires `./cli.cjs`, so the toolchain is bundled once.
 - `dist/THIRD-PARTY-LICENSES.txt` lists every package bundled into the CLI, with its version and licence text.
+- The size cost of committing the bundle to git history is recorded in [`docs/technical-debt.md`](docs/technical-debt.md).
 
 The build is reproducible: a pinned esbuild, no timestamps, no absolute paths, no source maps. CI rebuilds on a clean runner and fails on any difference from the committed `dist/`. A change to `src/` or to a dependency needs `npm run build` and a commit of `dist/`.
 
