@@ -1,0 +1,197 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+
+  crap-ratchet-gate:
+    name: CRAP ratchet gate
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Tests with coverage
+        run: npm run test:coverage
+      - name: Check the ratchet
+        run: npm run crap:check
+
+  crap-baseline-diff:
+    name: CRAP baseline diff
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The diff reads the base files from HEAD^1, the first parent of the checked-out commit
+          # (for a pull request, its merge commit), so the checkout needs two commits.
+          fetch-depth: 2
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Compare the baseline with the base
+        run: npm run crap:diff
+
+  dist-rebuild:
+    name: Rebuild dist
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: The committed dist matches a clean build
+        run: |
+          git diff --exit-code dist/
+          untracked="$(git status --porcelain -- dist)"
+          test -z "$untracked" || { echo "dist differs from a clean build:"; echo "$untracked"; exit 1; }
+
+  action-e2e:
+    name: Action end to end (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    env:
+      PROJECT: test/e2e/project
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Mode diff reads the base files from HEAD^1, so the checkout needs two commits.
+          fetch-depth: 2
+
+      - name: measure
+        id: measure
+        uses: ./
+        with:
+          mode: measure
+          working-directory: ${{ env.PROJECT }}
+      - name: Assert the measure summary
+        env:
+          SUMMARY: ${{ steps.measure.outputs.summary }}
+        run: |
+          test "$SUMMARY" = 'CRAP measure: functions=4 over5=2 sumOver5=23.1 unmatched=0' || { echo "unexpected summary: $SUMMARY"; exit 1; }
+
+      - name: check
+        id: check
+        uses: ./
+        with:
+          mode: check
+          working-directory: ${{ env.PROJECT }}
+      - name: Assert the check summary
+        env:
+          SUMMARY: ${{ steps.check.outputs.summary }}
+        run: |
+          test "$SUMMARY" = 'CRAP ratchet: pass (2 frozen, 4 functions measured)' || { echo "unexpected summary: $SUMMARY"; exit 1; }
+
+      - name: baseline with output-dir
+        id: baseline
+        uses: ./
+        with:
+          mode: baseline
+          output-dir: ${{ runner.temp }}/regenerated
+          working-directory: ${{ env.PROJECT }}
+      - name: Assert the regenerated files equal the committed ones and nothing was written to crap/
+        env:
+          SUMMARY: ${{ steps.baseline.outputs.summary }}
+        run: |
+          case "$SUMMARY" in 'CRAP baseline: wrote 1 unmatched rows to '*) ;; *) echo "unexpected summary: $SUMMARY"; exit 1 ;; esac
+          cmp "$RUNNER_TEMP/regenerated/baseline.tsv" "$PROJECT/crap/baseline.tsv"
+          cmp "$RUNNER_TEMP/regenerated/unmatched.tsv" "$PROJECT/crap/unmatched.tsv"
+          git diff --exit-code -- "$PROJECT/crap"
+
+      - name: diff against the first parent
+        id: diff
+        uses: ./
+        with:
+          mode: diff
+          working-directory: ${{ env.PROJECT }}
+      - name: diff against a revision that has the files
+        id: diff-head
+        uses: ./
+        with:
+          mode: diff
+          base: HEAD
+          working-directory: ${{ env.PROJECT }}
+      - name: Assert the diff summaries
+        env:
+          SUMMARY: ${{ steps.diff.outputs.summary }}
+          SUMMARY_HEAD: ${{ steps.diff-head.outputs.summary }}
+        run: |
+          case "$SUMMARY" in 'CRAP baseline diff: pass ('*) ;; *) echo "unexpected summary: $SUMMARY"; exit 1 ;; esac
+          test "$SUMMARY_HEAD" = 'CRAP baseline diff: pass (no baseline growth against the base; no unmatched list growth against the base)' || { echo "unexpected summary: $SUMMARY_HEAD"; exit 1; }
+
+      # Negative case. A threshold of 2 makes `tier` a new offender, so check must fail. The step
+      # is expected to fail, and it leaves one red annotation in the log for that reason.
+      - name: check against a stricter config (must fail)
+        id: strict
+        continue-on-error: true
+        uses: ./
+        with:
+          mode: check
+          config: crap/strict.json
+          working-directory: ${{ env.PROJECT }}
+      - name: Assert the strict check failed
+        env:
+          OUTCOME: ${{ steps.strict.outcome }}
+        run: test "$OUTCOME" = failure
+      - name: Assert the failure annotation text
+        working-directory: ${{ env.PROJECT }}
+        run: |
+          set +e
+          INPUT_MODE=check INPUT_CONFIG=crap/strict.json node "$GITHUB_WORKSPACE/dist/action.cjs" >/dev/null 2>"$RUNNER_TEMP/strict.err"
+          code=$?
+          set -e
+          test "$code" -eq 1
+          grep -F '::error file=src/pricing.ts,line=19::CRAP ratchet: NEW OFFENDER src/pricing.ts#tier ' "$RUNNER_TEMP/strict.err"
+
+  npx-from-git:
+    name: npx from git
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Run the gate through npx in a clean directory
+        env:
+          REF: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -o pipefail
+          consumer="$RUNNER_TEMP/consumer"
+          cp -R test/e2e/project "$consumer"
+          cd "$consumer"
+          npx --yes "github:Greengate-Fintech/verifime-crap-gate#$REF" measure | tee "$RUNNER_TEMP/measure.out"
+          grep -Fx 'CRAP measure: functions=4 over5=2 sumOver5=23.1 unmatched=0' "$RUNNER_TEMP/measure.out"
+          npx --yes "github:Greengate-Fintech/verifime-crap-gate#$REF" check | tee "$RUNNER_TEMP/check.out"
+          grep -Fx 'CRAP ratchet: pass (2 frozen, 4 functions measured)' "$RUNNER_TEMP/check.out"

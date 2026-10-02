@@ -1,0 +1,6 @@
+# Functions the coverage provider gives no entry for, scored at coverage 0 and ratcheted like the baseline.
+# See the README "CRAP gate" section.
+# Format: file<TAB>symbol, one row per occurrence.
+# The list only shrinks. Regenerate with: npm run crap:baseline
+# Growth (a new unmatched function) needs: npm run crap:baseline -- --allow-growth
+
