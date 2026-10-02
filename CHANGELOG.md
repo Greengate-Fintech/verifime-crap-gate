@@ -4,6 +4,8 @@ All notable changes are recorded here, in the Keep a Changelog style. Each relea
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-10-02
+
 Score impact: neutral
 
 ### Added
