@@ -269,7 +269,7 @@ A release is cut by the `Release` workflow, never by hand:
 
 The workflow fails if the tag exists, if `package.json` differs from the input, or if the CHANGELOG section is missing. It then runs `npm ci`, `npm test` and `npm run build`, smoke tests the built CLI, commits `dist/` on a release commit whose parent is the `main` head, tags that commit `vX.Y.Z`, pushes only the tag, and creates the GitHub release with the CHANGELOG section as notes. No branch holds the release commit, and a tag is never moved.
 
-A pull request that changes `release.yml`, `build.mjs` or `package.json` runs the same workflow as a dry run, which stops at a local tag and pushes nothing.
+A pull request that changes `release.yml`, `scripts/release-*.sh`, `build.mjs` or `package.json` runs the same steps as a read-only dry run, which stops at a local tag and pushes nothing. A release runs only from `main`.
 
 ## The gate on this repository
 
