@@ -214,13 +214,22 @@ const parseName = (message: string): { quotedName: string | undefined; kind: str
 
 const pointOf = (m: EslintMessage): Position => [m.line, (m.column || 1) - 1]
 
-type Classified = { parsed: ParsedMessage } | { problem: string }
+type Classified = { parsed: ParsedMessage } | { problem: string } | { skip: true }
 
 const problemText = (m: EslintMessage): string =>
   m.ruleId === null || m.ruleId === 'complexity' ? m.message : `[${m.ruleId}] ${m.message}`
 
+// The one message the measure skips. With `noInlineConfig` on, ESLint 9 warns once per inline
+// config comment (linter.js, `addWarning`): `ruleId` null, severity 1, not fatal, and this text.
+// The built-in config is unnamed, so ESLint names it "your config".
+const INLINE_CONFIG_NOTICE = /^'[\s\S]+' has no effect because you have 'noInlineConfig' setting in your config\.$/
+
+const isInlineConfigNotice = (m: EslintMessage): boolean =>
+  m.ruleId === null && m.severity === 1 && !m.fatal && INLINE_CONFIG_NOTICE.test(m.message)
+
 /** Anything but a parseable complexity message is a problem, never skipped. */
 const classify = (m: EslintMessage): Classified => {
+  if (isInlineConfigNotice(m)) return { skip: true }
   const complexity = m.ruleId === 'complexity' && !m.fatal ? CC_RE.exec(m.message) : null
   if (!complexity) return { problem: problemText(m) }
   const parsed = { cc: Number(complexity[1]), line: m.line, point: pointOf(m), ...parseName(m.message) }
@@ -332,6 +341,7 @@ const measureFile = (
   const lineAt = lazyLineReader(readSource, input.abs)
   for (const message of input.messages) {
     const classified = classify(message)
+    if ('skip' in classified) continue
     if ('problem' in classified) {
       out.problems.push({ file: input.rel, line: message.line, message: classified.problem })
       continue
