@@ -66,7 +66,7 @@ The gate runs ESLint through its Node API. It does not read your ESLint config a
 
 - the typescript-eslint parser;
 - the `complexity` rule at `max: 0`, so every function is reported with its cyclomatic complexity;
-- inline directives off (`noInlineConfig`), and unused-directive reporting off;
+- inline directives off (`noInlineConfig`), and unused-directive reporting off. A `// eslint-disable` or `/* eslint ... */` comment in your code never hides a function from the gate. ESLint warns that such a comment has no effect; the gate ignores that one warning, and every other message still fails the run;
 - files matched by `extensions` only (`.ts` by default), so a compiled `.js` file beside its `.ts` source reports no function;
 - ignored: files under `node_modules`, `dist`, `coverage` and `cdk.out` folders, and `*.d.ts` files.
 

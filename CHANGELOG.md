@@ -6,6 +6,11 @@ All notable changes are recorded here, in the Keep a Changelog style. Each relea
 
 Score impact: neutral
 
+### Fixed
+
+- `measure`, `check` and `baseline` no longer exit 1 on a file that has an inline ESLint directive. With inline directives off, ESLint warns that each directive comment "has no effect"; the gate counted that warning as a problem. It now ignores exactly that warning (no rule id, warning severity, not fatal, ESLint's exact text). Directives still never hide a function, and every other non-complexity message still fails closed.
+- Score impact: neutral. Scores, thresholds, file formats and exit codes are unchanged; only a run that failed on that warning now completes.
+
 ### Changed
 
 - `dist/` is no longer committed on `main`. A new `Release` workflow builds it and commits it on a release commit that only the release tag points to. Consumers keep pinning an exact tag, and the tagged tree contains `dist/`, so the action and `npx` work as before. A Dependabot bump of a bundled package no longer needs a rebuilt `dist/` and goes green on its own.
