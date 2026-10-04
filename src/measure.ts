@@ -221,6 +221,7 @@ const problemText = (m: EslintMessage): string =>
 
 // The one message the measure skips. With `noInlineConfig` on, ESLint 9 warns once per inline
 // config comment (linter.js, `addWarning`): `ruleId` null, severity 1, not fatal, and this text.
+// The text was taken from ESLint 9.39.1; re-check it when ESLint is bumped.
 // The built-in config is unnamed, so ESLint names it "your config".
 const INLINE_CONFIG_NOTICE = /^'[\s\S]+' has no effect because you have 'noInlineConfig' setting in your config\.$/
 

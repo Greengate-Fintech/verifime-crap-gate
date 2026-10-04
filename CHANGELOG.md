@@ -9,7 +9,6 @@ Score impact: neutral
 ### Fixed
 
 - `measure`, `check` and `baseline` no longer exit 1 on a file that has an inline ESLint directive. With inline directives off, ESLint warns that each directive comment "has no effect"; the gate counted that warning as a problem. It now ignores exactly that warning (no rule id, warning severity, not fatal, ESLint's exact text). Directives still never hide a function, and every other non-complexity message still fails closed.
-- Score impact: neutral. Scores, thresholds, file formats and exit codes are unchanged; only a run that failed on that warning now completes.
 
 ### Changed
 
