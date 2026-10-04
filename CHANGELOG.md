@@ -4,6 +4,13 @@ All notable changes are recorded here, in the Keep a Changelog style. Each relea
 
 ## [Unreleased]
 
+Score impact: neutral
+
+### Changed
+
+- `dist/` is no longer committed on `main`. A new `Release` workflow builds it and commits it on a release commit that only the release tag points to. Consumers keep pinning an exact tag, and the tagged tree contains `dist/`, so the action and `npx` work as before. A Dependabot bump of a bundled package no longer needs a rebuilt `dist/` and goes green on its own.
+- CI: `Rebuild dist` is replaced by `Build is reproducible` (two builds, same hashes), the end to end jobs build `dist/` first, and `npx from git` is replaced by `npx from packed tarball`. `npm test` builds `dist/` before the suite runs.
+
 ## [1.0.0] - 2026-10-02
 
 Score impact: neutral
