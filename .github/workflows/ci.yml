@@ -54,8 +54,8 @@ jobs:
       - name: Compare the baseline with the base
         run: npm run crap:diff
 
-  dist-rebuild:
-    name: Rebuild dist
+  build-reproducible:
+    name: Build is reproducible
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -64,12 +64,13 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - run: npm run build
-      - name: The committed dist matches a clean build
+      - name: Build twice and compare
         run: |
-          git diff --exit-code dist/
-          untracked="$(git status --porcelain -- dist)"
-          test -z "$untracked" || { echo "dist differs from a clean build:"; echo "$untracked"; exit 1; }
+          npm run build
+          sha256sum dist/* | tee "$RUNNER_TEMP/first.sha"
+          npm run build
+          sha256sum dist/* | tee "$RUNNER_TEMP/second.sha"
+          diff "$RUNNER_TEMP/first.sha" "$RUNNER_TEMP/second.sha" || { echo "two builds of the same tree differ"; exit 1; }
 
   action-e2e:
     name: Action end to end (${{ matrix.arch }})
@@ -89,6 +90,14 @@ jobs:
         with:
           # Mode diff reads the base files from HEAD^1, so the checkout needs two commits.
           fetch-depth: 2
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Build dist (not committed on main)
+        run: |
+          npm ci
+          npm run build
 
       - name: measure
         id: measure
@@ -175,23 +184,25 @@ jobs:
           test "$code" -eq 1
           grep -F '::error file=src/pricing.ts,line=19::CRAP ratchet: NEW OFFENDER src/pricing.ts#tier ' "$RUNNER_TEMP/strict.err"
 
-  npx-from-git:
-    name: npx from git
+  npx-from-packed-tarball:
+    name: npx from packed tarball
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version: 24
-      - name: Run the gate through npx in a clean directory
-        env:
-          REF: ${{ github.event.pull_request.head.sha || github.sha }}
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Run the packed CLI through npx in a clean directory
         run: |
           set -o pipefail
+          tarball="$RUNNER_TEMP/$(npm pack --silent --pack-destination "$RUNNER_TEMP")"
           consumer="$RUNNER_TEMP/consumer"
           cp -R test/e2e/project "$consumer"
           cd "$consumer"
-          npx --yes "github:Greengate-Fintech/verifime-crap-gate#$REF" measure | tee "$RUNNER_TEMP/measure.out"
+          npx --yes --package "$tarball" crap-gate measure | tee "$RUNNER_TEMP/measure.out"
           grep -Fx 'CRAP measure: functions=4 over5=2 sumOver5=23.1 unmatched=0' "$RUNNER_TEMP/measure.out"
-          npx --yes "github:Greengate-Fintech/verifime-crap-gate#$REF" check | tee "$RUNNER_TEMP/check.out"
+          npx --yes --package "$tarball" crap-gate check | tee "$RUNNER_TEMP/check.out"
           grep -Fx 'CRAP ratchet: pass (2 frozen, 4 functions measured)' "$RUNNER_TEMP/check.out"
