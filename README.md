@@ -247,7 +247,14 @@ The package's `bin` is `crap-gate`, which is `dist/cli.cjs`.
 - `dist/cli.cjs` bundles the gate, ESLint, typescript-eslint and TypeScript. It has no static `require` of a module that is not a Node built-in. ESLint and TypeScript keep dynamic loading sites (`require`, `import()`, `createRequire`) in the bundle, and the gate's options never reach them: it does no config lookup and loads no plugins. So it never resolves a module from the project it measures. A project with a different TypeScript, its own ESLint or its own ESLint config gets the same result.
 - `dist/action.cjs` is the action entry. It requires `./cli.cjs`, so the toolchain is bundled once.
 - `dist/THIRD-PARTY-LICENSES.txt` lists every package bundled into the CLI, with its version and licence text.
-- The cost of committing the bundle to git history, and why it is now paid once per release, is recorded in [`docs/technical-debt.md`](docs/technical-debt.md).
+
+### Why `main` has no `dist/`
+
+- `main` never contains `dist/`; it is gitignored.
+- Each release builds `dist/` and commits it on a release commit that only the release tag points to. That commit is never merged back into `main`.
+- Consumers pin the exact tag, so the tagged tree carries the bundle and both the action and `npx` work.
+- Dependabot bumps stay green with no rebuild step, and git history does not grow with every toolchain bump.
+- History from before this change still holds `dist/` and is not rewritten.
 
 The build is reproducible: a pinned esbuild, no timestamps, no absolute paths, no source maps. CI builds twice on a clean runner and fails when the two outputs differ. A change to `src/` or to a dependency needs nothing extra: a Dependabot bump goes green on its own.
 

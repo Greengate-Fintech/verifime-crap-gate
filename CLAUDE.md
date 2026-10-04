@@ -25,7 +25,7 @@
 - A dependency bump (Dependabot included) needs nothing extra. CI builds `dist/` where it needs it.
 - `npm test` builds `dist/` itself. Run `npm run build` before using `dist/` directly.
 - Never edit `dist/` by hand. A build that differs between runs or machines is a defect to fix, not a check to skip: the `Build is reproducible` job fails on it.
-- The history cost of the bundle, and how this design removed the per-bump part, is recorded in `docs/technical-debt.md`.
+- Never commit `dist/` to `main`. Release only through the `Release` workflow.
 
 ## Commits and pull requests
 
