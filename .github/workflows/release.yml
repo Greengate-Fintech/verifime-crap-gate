@@ -1,0 +1,101 @@
+name: Release
+
+# main carries no dist/. A release builds dist/ and commits it on a release commit whose parent is
+# main's head. Only the release tag points to that commit, so no branch ever holds a bundle.
+#
+# workflow_dispatch on main cuts the release (job `release`, the only job with write access). A pull
+# request that changes this workflow, the build, package.json or the release scripts runs the same
+# steps as a read-only dry run (job `dry-run`): it ends at a local tag and pushes nothing.
+# The two jobs share their logic in scripts/release-check.sh and scripts/release-commit.sh.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to release, without the v (for example 1.0.1). Must equal package.json and have a CHANGELOG section.
+        required: true
+        type: string
+  pull_request:
+    paths:
+      - .github/workflows/release.yml
+      - scripts/release-*.sh
+      - build.mjs
+      - package.json
+
+permissions:
+  contents: read
+
+jobs:
+  dry-run:
+    name: Release (dry run)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    env:
+      DRY_RUN: 'true'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Resolve the version and check the release is allowed
+        run: scripts/release-check.sh
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - name: Smoke test the built CLI
+        run: |
+          set -o pipefail
+          cd test/e2e/project
+          node ../../../dist/cli.cjs measure | tee "$RUNNER_TEMP/smoke.out"
+          grep -Fx 'CRAP measure: functions=4 over5=2 sumOver5=23.1 unmatched=0' "$RUNNER_TEMP/smoke.out"
+      - name: Commit dist/ on a release commit and tag it locally
+        run: scripts/release-commit.sh
+
+  release:
+    name: Release
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      DRY_RUN: 'false'
+      INPUT_VERSION: ${{ inputs.version }}
+    steps:
+      - name: Releases run from main only
+        run: |
+          [ "$GITHUB_REF" = refs/heads/main ] || { echo "Run this workflow on main, not on $GITHUB_REF."; exit 1; }
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Resolve the version and check the release is allowed
+        run: scripts/release-check.sh
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - name: Smoke test the built CLI
+        run: |
+          set -o pipefail
+          cd test/e2e/project
+          node ../../../dist/cli.cjs measure | tee "$RUNNER_TEMP/smoke.out"
+          grep -Fx 'CRAP measure: functions=4 over5=2 sumOver5=23.1 unmatched=0' "$RUNNER_TEMP/smoke.out"
+      - name: Commit dist/ on a release commit and tag it
+        run: scripts/release-commit.sh
+      - name: Push the tag
+        run: git push origin "refs/tags/$TAG"
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$TAG" --verify-tag --title "$TAG" --notes-file "$RUNNER_TEMP/notes.md"

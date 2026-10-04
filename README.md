@@ -131,7 +131,7 @@ The baseline and unmatched files do not record the threshold. Changing `threshol
 
 The action runs the bundled gate on the runner's Node 24. It needs no `npm install`, no ESLint and no TypeScript in your repository. Your coverage must exist before the action runs, as `coverage/coverage-final.json` (or the files in `coverage` of your config).
 
-Pin the action to an exact release tag, written `@vX.Y.Z` below (replace it with a tag that exists). While testing a release candidate, pin to a full commit SHA, written `@<full-commit-sha>`. Never pin to a moving major tag.
+Pin the action to an exact release tag, written `@vX.Y.Z` below (replace it with a tag that exists). Never pin to a moving major tag, and never to a branch or to a commit on `main`: `main` does not contain `dist/`, so only a release tag (or the release commit it points to) runs.
 
 ### Inputs and output
 
@@ -221,7 +221,7 @@ A tag that changes any score is released as "Score impact: changing" (see `CHANG
 
 ## Use as a CLI
 
-The bundled CLI runs through `npx` from a git tag, with nothing to install:
+The bundled CLI runs through `npx` from a release tag, with nothing to install (the tag's tree contains `dist/`):
 
     npx --yes github:Greengate-Fintech/verifime-crap-gate#vX.Y.Z check
 
@@ -242,14 +242,21 @@ The package's `bin` is `crap-gate`, which is `dist/cli.cjs`.
 
 ## The bundle
 
-`dist/cli.cjs` and `dist/action.cjs` are committed. `npm run build` produces them, with esbuild, from `src/`:
+`dist/` is generated and is not committed on `main`. `npm run build` produces it, with esbuild, from `src/`. The release workflow commits it on the release commit that a release tag points to (see Releasing). The bundle has three files:
 
 - `dist/cli.cjs` bundles the gate, ESLint, typescript-eslint and TypeScript. It has no static `require` of a module that is not a Node built-in. ESLint and TypeScript keep dynamic loading sites (`require`, `import()`, `createRequire`) in the bundle, and the gate's options never reach them: it does no config lookup and loads no plugins. So it never resolves a module from the project it measures. A project with a different TypeScript, its own ESLint or its own ESLint config gets the same result.
 - `dist/action.cjs` is the action entry. It requires `./cli.cjs`, so the toolchain is bundled once.
 - `dist/THIRD-PARTY-LICENSES.txt` lists every package bundled into the CLI, with its version and licence text.
-- The size cost of committing the bundle to git history is recorded in [`docs/technical-debt.md`](docs/technical-debt.md).
 
-The build is reproducible: a pinned esbuild, no timestamps, no absolute paths, no source maps. CI rebuilds on a clean runner and fails on any difference from the committed `dist/`. A change to `src/` or to a dependency needs `npm run build` and a commit of `dist/`.
+### Why `main` has no `dist/`
+
+- `main` never contains `dist/`; it is gitignored.
+- Each release builds `dist/` and commits it on a release commit that only the release tag points to. That commit is never merged back into `main`.
+- Consumers pin the exact tag, so the tagged tree carries the bundle and both the action and `npx` work.
+- Dependabot bumps stay green with no rebuild step, and git history does not grow with every toolchain bump.
+- History from before this change still holds `dist/` and is not rewritten.
+
+The build is reproducible: a pinned esbuild, no timestamps, no absolute paths, no source maps. CI builds twice on a clean runner and fails when the two outputs differ. A change to `src/` or to a dependency needs nothing extra: a Dependabot bump goes green on its own.
 
 ## Development
 
@@ -257,6 +264,19 @@ The build is reproducible: a pinned esbuild, no timestamps, no absolute paths, n
     npm run typecheck
     npm test
     npm run build
+
+`npm test` builds `dist/` first (a Vitest global setup), so the bundle tests always run against the current source. Run `npm run build` yourself before using `dist/` directly, for example `node dist/cli.cjs measure` or `uses: ./` in a local action run. `dist/` is ignored by git.
+
+## Releasing
+
+A release is cut by the `Release` workflow, never by hand:
+
+1. In a pull request, set the `version` in `package.json` and add a `## [X.Y.Z] - YYYY-MM-DD` section to `CHANGELOG.md`, starting with the `Score impact:` line. Merge it.
+2. Run the `Release` workflow (Actions tab, Run workflow) on `main` with `version` set to `X.Y.Z`, without the `v`.
+
+The workflow fails if the tag exists, if `package.json` differs from the input, or if the CHANGELOG section is missing. It then runs `npm ci`, `npm test` and `npm run build`, smoke tests the built CLI, commits `dist/` on a release commit whose parent is the `main` head, tags that commit `vX.Y.Z`, pushes only the tag, and creates the GitHub release with the CHANGELOG section as notes. No branch holds the release commit, and a tag is never moved.
+
+A pull request that changes `release.yml`, `scripts/release-*.sh`, `build.mjs` or `package.json` runs the same steps as a read-only dry run, which stops at a local tag and pushes nothing. A release runs only from `main`.
 
 ## The gate on this repository
 
@@ -267,7 +287,7 @@ This repository runs its own gate on `src`, with `crap/config.json`, `crap/basel
 
 Run the same locally with `npm run test:coverage && npm run crap:check`.
 
-Three more CI jobs prove the bundle: `Rebuild dist` (a clean build equals the committed `dist/`), `Action end to end` (on x64 and arm64: the action from this checkout, all four modes, against the synthetic project in `test/e2e/project`, with a negative case that must fail) and `npx from git` (the pushed commit, run through `npx` in a clean directory).
+Three more CI jobs prove the bundle: `Build is reproducible` (two clean builds give identical hashes), `Action end to end` (on x64 and arm64: it builds `dist/`, then runs the action from this checkout, all four modes, against the synthetic project in `test/e2e/project`, with a negative case that must fail) and `npx from packed tarball` (`npm pack` of a fresh build, run through `npx` in a clean directory, which proves the `bin` and `files` wiring).
 
 See `CLAUDE.md` for the rules this public repository follows.
 

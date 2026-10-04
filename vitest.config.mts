@@ -3,6 +3,8 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   test: {
     environment: 'node',
+    // Builds dist/ for the bundle and licence tests (dist/ is not committed on main).
+    globalSetup: ['./test/global-setup.ts'],
     exclude: ['**/node_modules/**', '**/dist/**', '.worktrees/**'],
     coverage: {
       provider: 'v8',
