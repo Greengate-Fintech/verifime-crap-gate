@@ -1,0 +1,106 @@
+name: Release
+
+# main carries no dist/. A release builds dist/ and commits it on a release commit whose parent is
+# main's head. Only the release tag points to that commit, so no branch ever holds a bundle.
+#
+# workflow_dispatch cuts the release. A pull request that changes this workflow, the build or
+# package.json runs the same steps as a dry run: it ends at a local tag and pushes nothing.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to release, without the v (for example 1.0.1). Must equal package.json and have a CHANGELOG section.
+        required: true
+        type: string
+  pull_request:
+    paths:
+      - .github/workflows/release.yml
+      - build.mjs
+      - package.json
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: ${{ github.event_name == 'workflow_dispatch' && 'Release' || 'Release (dry run)' }}
+    runs-on: ubuntu-24.04
+    env:
+      DRY_RUN: ${{ github.event_name != 'workflow_dispatch' }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && 'main' || '' }}
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Resolve the version and check the release is allowed
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [ "$DRY_RUN" = true ]; then
+            version="$(node -p "require('./package.json').version")"
+            tag="dryrun/v$version"
+          else
+            version="$INPUT_VERSION"
+            tag="v$version"
+            if git rev-parse --verify --quiet "refs/tags/$tag" >/dev/null; then
+              echo "Tag $tag already exists. Tags are never moved."; exit 1
+            fi
+          fi
+          echo "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || { echo "Version '$version' is not X.Y.Z"; exit 1; }
+          package_version="$(node -p "require('./package.json').version")"
+          test "$package_version" = "$version" || { echo "package.json is $package_version, not $version"; exit 1; }
+          # The notes are the CHANGELOG section for this version, up to the next section heading.
+          awk -v v="$version" '
+            index($0, "## [" v "] - ") == 1 { found = 1; next }
+            found && /^## \[/ { exit }
+            found { print }
+          ' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
+          grep -Eq "^## \[$(echo "$version" | sed 's/\./\\./g')\] - [0-9]{4}-[0-9]{2}-[0-9]{2}\$" CHANGELOG.md || { echo "CHANGELOG.md has no '## [$version] - YYYY-MM-DD' section"; exit 1; }
+          grep -q '^Score impact: ' "$RUNNER_TEMP/notes.md" || { echo "The CHANGELOG section has no Score impact line"; exit 1; }
+          { echo "VERSION=$version"; echo "TAG=$tag"; } >> "$GITHUB_ENV"
+
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - name: Smoke test the built CLI
+        run: |
+          set -o pipefail
+          cd test/e2e/project
+          node ../../../dist/cli.cjs measure | tee "$RUNNER_TEMP/smoke.out"
+          grep -Fx 'CRAP measure: functions=4 over5=2 sumOver5=23.1 unmatched=0' "$RUNNER_TEMP/smoke.out"
+
+      - name: Commit dist/ on a release commit and tag it
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          parent="$(git rev-parse HEAD)"
+          git checkout --detach
+          git add -f dist/
+          git commit -m "release: v$VERSION"
+          git tag -a "$TAG" -m "v$VERSION"
+          test "$(git rev-parse "$TAG^{commit}")" = "$(git rev-parse HEAD)"
+          test "$(git rev-parse HEAD^)" = "$parent"
+          # The release commit adds dist/ and changes nothing else.
+          others="$(git diff --name-only HEAD^ HEAD | grep -v '^dist/' || true)"
+          test -z "$others" || { echo "Release commit changes files outside dist/: $others"; exit 1; }
+          git ls-tree --name-only HEAD dist/ | grep -Fx dist/cli.cjs
+          git ls-tree --name-only HEAD dist/ | grep -Fx dist/action.cjs
+
+      - name: Push the tag
+        if: github.event_name == 'workflow_dispatch'
+        run: git push origin "refs/tags/$TAG"
+
+      - name: Create the GitHub release
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$TAG" --verify-tag --title "$TAG" --notes-file "$RUNNER_TEMP/notes.md"
