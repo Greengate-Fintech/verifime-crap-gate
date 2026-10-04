@@ -5,8 +5,8 @@ import path from 'path'
 import { describe, expect, it } from 'vitest'
 import { tempRoot, writeFileIn } from './helpers/sandbox'
 
-// Runs the committed bundles as processes, the way a consumer does. CI rebuilds dist/ and fails on
-// any difference, so these tests exercise exactly what ships.
+// Runs the bundles as processes, the way a consumer does. The Vitest global setup builds dist/ first,
+// and a release commits that same build, so these tests exercise what ships.
 
 const ROOT = path.join(__dirname, '..')
 const CLI = path.join(ROOT, 'dist', 'cli.cjs')
