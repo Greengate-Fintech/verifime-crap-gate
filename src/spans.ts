@@ -150,3 +150,24 @@ export const makeSpanRule = (record: (filename: string, span: FunctionSpan) => v
     return complexityRule.create(Object.create(context, { report: { value: report } }) as Rule.RuleContext)
   },
 })
+
+/** TypeScript declarations that compile to a function ESLint reports no complexity for. */
+const COMPILED_DECLARATIONS = ['TSEnumDeclaration', 'TSModuleDeclaration'] as const
+
+/**
+ * A second companion rule: for every enum and namespace declaration it records where a converter
+ * can start the entry of the function the declaration compiles to (Vitest 4 and 5 give it one):
+ * the declaration start, its `export`, and its name. The join leaves those entries to no function,
+ * and these points keep them out of the "joined to no function" notice. It reports nothing.
+ */
+export const makeDeclarationRule = (record: (filename: string, points: SourcePoint[]) => void): Rule.RuleModule => ({
+  meta: { type: 'problem', schema: [] },
+  create(context) {
+    const visit = (node: unknown): void => {
+      const declaration = node as AstNode
+      const id = declaration.id as AstNode
+      record(context.filename, [declaration, exportWrapped(declaration), id].map((n) => point(n.loc.start)))
+    }
+    return Object.fromEntries(COMPILED_DECLARATIONS.map((type) => [type, visit]))
+  },
+})

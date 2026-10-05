@@ -473,3 +473,49 @@ describe('assignEntries: augmenting paths and unowned entries', () => {
     expect(unownedEntries(file, assignEntries(spans, file)).map((e) => e.name)).toEqual(['stray'])
   })
 })
+
+describe('join: enums and namespaces (fix round 2)', () => {
+  // Vitest 4 and 5 give each emitted enum and namespace an entry at its `enum` or `namespace`
+  // keyword. ESLint reports no function for them, so no function owns those entries.
+  const src = [
+    'export enum Colour {',
+    "  Red = 'red',",
+    '}',
+    'namespace Local {',
+    '  export const twice = (n: number): number => n * 2',
+    '}',
+    'export namespace Outer.Inner {',
+    '  export const depth = 2',
+    '}',
+    'export namespace Shell {',
+    '  export namespace Core {',
+    '    export const one = 1',
+    '  }',
+    '}',
+    'export const use = (): number => Local.twice(Outer.Inner.depth)',
+    '',
+  ].join('\n')
+
+  it('does not report the entries of enums and namespaces as joined to no function', async () => {
+    const out = await run(src, [
+      { name: '(anonymous_0)', start: at(src, 1, 'enum'), end: [3, 1], f: 1 },
+      { name: '(anonymous_1)', start: [4, 0], end: [6, 1], f: 1 },
+      { name: '(anonymous_2)', start: at(src, 5, 'n * 2'), end: [5, 51], f: 1 },
+      { name: '(anonymous_3)', start: at(src, 7, 'namespace'), end: [9, 1], f: 1 },
+      { name: '(anonymous_4)', start: at(src, 10, 'namespace'), end: [14, 1], f: 1 },
+      { name: '(anonymous_5)', start: at(src, 11, 'namespace'), end: [13, 3], f: 1 },
+      { name: '(anonymous_6)', start: at(src, 15, 'Local'), end: [15, 64], f: 1 },
+    ])
+    expect(out.problems).toEqual([])
+    expect(out.joined).toEqual(['5 Arrow function 1', '15 Arrow function 1'])
+    expect(out.unjoined).toEqual([])
+  })
+
+  it('still reports a function entry that starts in no function head, next to them', async () => {
+    const out = await run(src, [
+      { name: '(anonymous_0)', start: at(src, 1, 'enum'), end: [3, 1], f: 1 },
+      { name: 'stray', start: at(src, 12, 'one'), end: [12, 24], f: 1 },
+    ])
+    expect(out.unjoined).toEqual([`12:${at(src, 12, 'one')[1] + 1} stray`])
+  })
+})

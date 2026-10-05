@@ -4,8 +4,8 @@ import { ESLint } from 'eslint'
 import type { Linter, Rule } from 'eslint'
 import tseslint from 'typescript-eslint'
 import type { CrapConfig } from './config'
-import { makeSpanRule } from './spans'
-import type { FunctionSpan } from './types'
+import { makeDeclarationRule, makeSpanRule } from './spans'
+import type { FunctionSpan, SourcePoint } from './types'
 
 // Runs ESLint in-process with a built-in flat config: ignores for dependency, build, coverage,
 // declaration and cdk output paths, the typescript-eslint parser, inline directives off, and
@@ -24,6 +24,7 @@ const COMPLEXITY_OPTIONS = { max: 0 }
 
 const SPAN_PLUGIN = 'crap-gate'
 const SPAN_RULE = 'function-spans'
+const DECLARATION_RULE = 'compiled-declarations'
 
 export const buildEslintConfig = (extensions: readonly string[]): Linter.Config[] => [
   { ignores: IGNORES },
@@ -35,15 +36,23 @@ export const buildEslintConfig = (extensions: readonly string[]): Linter.Config[
   },
 ]
 
-/** The companion rule on the same files, with the same options. It reports nothing, so the lint results are unchanged. */
-const spanConfig = (extensions: readonly string[], rule: Rule.RuleModule): Linter.Config => ({
+/**
+ * The companion rules on the same files: the span rule with the same options as `complexity`, and
+ * the declaration rule. Neither reports anything, so the lint results are unchanged.
+ */
+const spanConfig = (extensions: readonly string[], spanRule: Rule.RuleModule, declarationRule: Rule.RuleModule): Linter.Config => ({
   files: globsOf(extensions),
-  plugins: { [SPAN_PLUGIN]: { rules: { [SPAN_RULE]: rule } } },
-  rules: { [`${SPAN_PLUGIN}/${SPAN_RULE}`]: ['warn', COMPLEXITY_OPTIONS] },
+  plugins: { [SPAN_PLUGIN]: { rules: { [SPAN_RULE]: spanRule, [DECLARATION_RULE]: declarationRule } } },
+  rules: { [`${SPAN_PLUGIN}/${SPAN_RULE}`]: ['warn', COMPLEXITY_OPTIONS], [`${SPAN_PLUGIN}/${DECLARATION_RULE}`]: 'warn' },
 })
 
-/** A lint result with the span of every function its complexity messages report. */
-export type LintedFile = ESLint.LintResult & { spans: FunctionSpan[] }
+/** A lint result with the span of every function its complexity messages report, and the compiled declaration points. */
+export type LintedFile = ESLint.LintResult & { spans: FunctionSpan[]; declarations: SourcePoint[] }
+
+/** Appends to the list kept for a file name. */
+const collect = <T>(byFile: Map<string, T[]>) => (filename: string, ...items: T[]): void => {
+  byFile.set(filename, [...(byFile.get(filename) ?? []), ...items])
+}
 
 const isDirectory = (dir: string): boolean => {
   try {
@@ -82,13 +91,19 @@ export const lintScope = async (repoRoot: string, config: CrapConfig): Promise<L
   const targets = lintTargets(repoRoot, config.scope)
   if (targets.length === 0) return []
   const spans = new Map<string, FunctionSpan[]>()
-  const rule = makeSpanRule((filename, span) => spans.set(filename, [...(spans.get(filename) ?? []), span]))
+  const declarations = new Map<string, SourcePoint[]>()
+  const spanRule = makeSpanRule(collect(spans))
+  const declarationRule = makeDeclarationRule((filename, points) => collect(declarations)(filename, ...points))
   const eslint = new ESLint({
     cwd: repoRoot,
     overrideConfigFile: true,
-    overrideConfig: [...buildEslintConfig(config.extensions), spanConfig(config.extensions, rule)],
+    overrideConfig: [...buildEslintConfig(config.extensions), spanConfig(config.extensions, spanRule, declarationRule)],
     errorOnUnmatchedPattern: false,
   })
   const results = (await eslint.lintFiles(targets)).sort(byFilePath)
-  return results.map((result) => ({ ...result, spans: spans.get(result.filePath) ?? [] }))
+  return results.map((result) => ({
+    ...result,
+    spans: spans.get(result.filePath) ?? [],
+    declarations: declarations.get(result.filePath) ?? [],
+  }))
 }

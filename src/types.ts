@@ -118,6 +118,12 @@ export interface EslintFileResult {
   messages: EslintMessage[]
   /** One per complexity message, from the gate's lint pass. Without them every complexity message is a problem. */
   spans?: FunctionSpan[]
+  /**
+   * Where an enum or namespace declaration starts (with its `export`, and its name), from the gate's
+   * lint pass. Each compiles to a function ESLint does not report; its coverage entry is no
+   * function's and is not listed as joined to no function.
+   */
+  declarations?: SourcePoint[]
 }
 
 export interface CrapSummary {

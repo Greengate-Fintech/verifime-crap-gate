@@ -151,13 +151,20 @@ export const assignEntries = (spans: readonly FunctionSpan[], file: IstanbulFile
 }
 
 /**
- * Entries no function owns, in fnMap order. Left out: unloaded-file placeholders, and initialiser
+ * Entries no function owns, in fnMap order. Left out: unloaded-file placeholders; initialiser
  * entries, which a converter also emits for code ESLint reports no function for (a constructor's
- * parameter properties). What is left is a function entry that started in no function head.
+ * parameter properties); and entries that start on a compiled declaration point (an enum or a
+ * namespace, see EslintFileResult.declarations). What is left is a function entry that started in
+ * no function head.
  */
-export const unownedEntries = (file: IstanbulFileCoverage | null, owned: ReadonlyMap<number, string>): EntryStart[] => {
+export const unownedEntries = (
+  file: IstanbulFileCoverage | null,
+  owned: ReadonlyMap<number, string>,
+  declarations: readonly SourcePoint[] = [],
+): EntryStart[] => {
   const taken = new Set(owned.values())
-  return entryStarts(file).filter((e) => !taken.has(e.id) && !INITIALISER_ENTRY.test(e.name))
+  const isDeclaration = (e: EntryStart): boolean => declarations.some((p) => compare(p, e.start) === 0)
+  return entryStarts(file).filter((e) => !taken.has(e.id) && !INITIALISER_ENTRY.test(e.name) && !isDeclaration(e))
 }
 
 // ---------------------------------------------------------------------------------------

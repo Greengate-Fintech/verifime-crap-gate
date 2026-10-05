@@ -10,6 +10,7 @@ import type {
   FunctionScore,
   FunctionSpan,
   IstanbulFileCoverage,
+  SourcePoint,
   MeasureProblem,
   Measurement,
 } from './types'
@@ -264,6 +265,7 @@ interface FileInput {
   abs: string
   messages: EslintMessage[]
   spans: FunctionSpan[]
+  declarations: SourcePoint[]
 }
 
 const recordFunction = (
@@ -297,7 +299,7 @@ const measureFile = (
 ): void => {
   const entry = mergeCoverage(entries)
   const owned = assignEntries(input.spans, entry)
-  for (const e of unownedEntries(entry, owned)) {
+  for (const e of unownedEntries(entry, owned, input.declarations)) {
     out.unjoined?.push({ file: input.rel, line: e.start[0], column: e.start[1] + 1, name: e.name })
   }
   const pair = spanPairer(input.spans)
@@ -328,7 +330,7 @@ const inScopeFiles = (eslint: EslintFileResult[], repoRoot: string, rules: Scope
   eslint
     .map((f) => {
       const abs = realPathOf(path.resolve(repoRoot, f.filePath))
-      return { rel: toPosix(path.relative(repoRoot, abs)), abs, messages: f.messages, spans: f.spans ?? [] }
+      return { rel: toPosix(path.relative(repoRoot, abs)), abs, messages: f.messages, spans: f.spans ?? [], declarations: f.declarations ?? [] }
     })
     .filter((f) => rules.inScope(f.rel))
 

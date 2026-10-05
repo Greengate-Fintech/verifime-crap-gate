@@ -60,6 +60,8 @@ describe.each(VERSIONS)('join on Vitest %s coverage', (version) => {
     }
     const m = measure(await lintScope(PACKAGE, CONFIG), coverage, PACKAGE, undefined, CONFIG)
     expect(m.problems).toEqual([])
+    // Every entry is a function's, or comes from code ESLint reports no function for (enums, namespaces).
+    expect(m.unjoined).toEqual([])
     expect({
       joined: m.functions.map((f) => `${f.file}:${f.line} ${f.kind} ${f.cov} ${f.covKind}`),
       unmatched: m.unmatched.map((u) => `${u.file}:${u.line} ${u.kind}`),
