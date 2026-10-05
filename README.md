@@ -79,15 +79,19 @@ A directory of the default scope that does not exist is skipped. A directory in 
 
 ### How a function is joined to its coverage
 
-The lint pass also records where each reported function is declared: where its declaration starts (its `export`, its modifiers and method key, or its `const` statement), where its body starts, and where its node ends. A coverage entry belongs to the innermost function whose declaration contains the start of the entry:
+The lint pass also records where each reported function is declared: where its declaration starts (its `export`, its modifiers and method key, or its `const` statement when that statement declares only this function; with several declarators, the declarator), where its body starts, and where its node ends. A coverage entry belongs to the innermost function whose declaration contains the start of the entry:
 
-- An entry that starts exactly where the function, its declaration, its key or its body starts is paired first. Vitest 1 to 3 start an entry at the function head, Vitest 4 and 5 at its body, so both are found.
-- Any other entry goes to the innermost function still without one, but only if it starts in that function's head (its declaration start to its body start). An entry inside a body is never given to the function around it.
+- An entry that starts exactly on one of the function's five start points is paired first: its declaration start, its method or property key, its node start, the position ESLint reports it at, and its body start. Vitest 1 to 3 start an entry at the function head, Vitest 4 and 5 at its body, so both are found.
+- Any other entry goes to the innermost function still without one, but only if it starts in that function's head. The head runs from the declaration start to the body's first token after any opening parentheses (so `(e) => (e as Error).message` reaches an entry at `e`), or to the start of the body when the body is itself a function. An entry inside a body is never given to the function around it.
 - Each function owns at most one entry. Only a converter's initialiser entry (`<instance_members_initializer>`, `<static_initializer>`) can belong to a class field initialiser or a static block.
 
 So the join does not depend on how long a signature is, on the Vitest version or on the order of the coverage files. When two coverage files cover the same source file, entries with an identical span are merged and their hit counts added; entries with different spans stay separate.
 
+A coverage entry that no function takes is printed before the summary line, as `Coverage entry joined to no function: <file>:<line>:<column> <name>`. It is a notice only: it is not scored and it does not change the exit code. Placeholder entries for files no test loads, and initialiser entries, are not listed. On Vitest 1 to 3, code that compiles to a function ESLint does not report (for example a TypeScript `enum`) can show here.
+
 A complexity message the lint pass recorded no span for cannot be joined: it is a problem, `Complexity message with no function span: was the file linted by the gate?`, and the run exits 1.
+
+Known limit: when one source file is covered both by a package on Vitest 1 to 3 and by a package on Vitest 4 or 5 (only during a migration), the two coverage files start their entries and statements at different places. The entries do not merge, only one of them is used, and the statements of both are counted, so that function's coverage can read low. Move every package to the same Vitest major to remove it.
 
 ## Commands
 
