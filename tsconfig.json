@@ -10,5 +10,6 @@
     "outDir": "dist",
     "noEmit": true
   },
-  "include": ["src", "test"]
+  "include": ["src", "test"],
+  "exclude": ["test/fixtures/vitest-versions"]
 }

@@ -144,6 +144,8 @@ vite.config.ts.timestamp-*
 
 # Fixture projects for the end-to-end action tests keep their coverage files.
 !test/e2e/**/coverage/
+# The synthetic package for the coverage join keeps one coverage file per Vitest version.
+!test/fixtures/vitest-versions/coverage/
 test/e2e/**/coverage/crap-report.json
 dist.tmp/
 
