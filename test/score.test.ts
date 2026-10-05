@@ -167,3 +167,76 @@ describe('roundTo (round half to even on the exact double)', () => {
     expect(roundTo(2 / 3, 4)).toBe(0.6667)
   })
 })
+
+describe('implicit else (a branch location with an empty position)', () => {
+  const empty = { start: {}, end: {} } as unknown as IstanbulLocation
+  const guarded = (b: number[], overrides: Partial<IstanbulFileCoverage> = {}) =>
+    makeFile({
+      statementMap: { '0': loc(11, 2, 11, 10), '1': loc(12, 2, 12, 10) },
+      s: { '0': 1, '1': 1 },
+      branchMap: { '0': { loc: loc(11, 2, 11, 10), locations: [loc(11, 2, 11, 10), empty] } },
+      b: { '0': b },
+      ...overrides,
+    })
+
+  it('counts the implicit else with its own hits inside the function holding the branch', () => {
+    expect(functionCoverage(guarded([0, 4]), '0')).toEqual({ cov: 0.5, covKind: 'min(stmt,branch)' })
+  })
+
+  it('counts an implicit else that never ran as an uncovered branch', () => {
+    expect(functionCoverage(guarded([4, 0]), '0')).toEqual({ cov: 0.5, covKind: 'min(stmt,branch)' })
+    expect(functionCoverage(guarded([4, 4]), '0')).toEqual({ cov: 1, covKind: 'min(stmt,branch)' })
+  })
+
+  it('does not count the implicit else of a branch outside the function', () => {
+    const outside = guarded([0, 4], { branchMap: { '0': { loc: loc(30, 2, 30, 10), locations: [loc(30, 2, 30, 10), empty] } } })
+    expect(functionCoverage(outside, '0')).toEqual({ cov: 1, covKind: 'stmt' })
+  })
+
+  it('skips an empty location when the branch has no loc to attribute it by', () => {
+    const noLoc = guarded([0, 4], { branchMap: { '0': { locations: [loc(11, 2, 11, 10), empty] } } })
+    expect(functionCoverage(noLoc, '0')).toEqual({ cov: 0, covKind: 'min(stmt,branch)' })
+  })
+
+  it('counts a branch whose only locations are empty by its own loc', () => {
+    const onlyEmpty = guarded([2], { branchMap: { '0': { loc: loc(11, 2, 11, 10), locations: [empty] } } })
+    expect(functionCoverage(onlyEmpty, '0')).toEqual({ cov: 1, covKind: 'min(stmt,branch)' })
+  })
+
+  it('counts the implicit else of an inner function for the inner and the enclosing function, as it counts located branches', () => {
+    // outer fn lines 10-20 holds inner fn lines 12-14; the inner `if` (line 13) never fired.
+    const nested = makeFile({
+      statementMap: { '0': loc(11, 2, 11, 10), '1': loc(13, 4, 13, 12) },
+      s: { '0': 1, '1': 1 },
+      fnMap: { '0': { name: 'outer', loc: loc(10, 0, 20, 1) }, '1': { name: 'inner', loc: loc(12, 2, 14, 3) } },
+      f: { '0': 1, '1': 1 },
+      branchMap: { '0': { loc: loc(13, 4, 13, 12), locations: [loc(13, 4, 13, 12), empty] } },
+      b: { '0': [0, 3] },
+    })
+    expect(functionCoverage(nested, '1')).toEqual({ cov: 0.5, covKind: 'min(stmt,branch)' })
+    expect(functionCoverage(nested, '0')).toEqual({ cov: 0.5, covKind: 'min(stmt,branch)' })
+    // An enclosing function with a located branch of its own: both functions count the inner empty slot.
+    const withOuter = { ...nested, branchMap: { ...nested.branchMap, '1': { loc: loc(15, 2, 15, 10), locations: [loc(15, 2, 15, 10), loc(16, 2, 16, 10)] } }, b: { ...nested.b, '1': [1, 1] } }
+    expect(functionCoverage(withOuter, '1')).toEqual({ cov: 0.5, covKind: 'min(stmt,branch)' })
+    expect(functionCoverage(withOuter, '0')).toEqual({ cov: 0.75, covKind: 'min(stmt,branch)' })
+  })
+
+  it.each(['cond-expr', 'binary-expr', 'switch', 'default-arg'])('counts an empty slot on a %s branch the same way', (type) => {
+    // Policy: any branch type with an empty location counts it by the branch loc, with its own hits.
+    const file = guarded([0, 4], { branchMap: { '0': { type, loc: loc(11, 2, 11, 10), locations: [loc(11, 2, 11, 10), empty] } } as never })
+    expect(functionCoverage(file, '0')).toEqual({ cov: 0.5, covKind: 'min(stmt,branch)' })
+  })
+
+  it('scores a function that never ran as 0 even with a guard whose implicit else is empty', () => {
+    const neverCalled = guarded([0, 0], { s: { '0': 0, '1': 0 }, f: { '0': 0 } })
+    expect(functionCoverage(neverCalled, '0')).toEqual({ cov: 0, covKind: 'min(stmt,branch)' })
+    const noBody = guarded([0, 0], { statementMap: {}, s: {}, f: { '0': 0 }, branchMap: {}, b: {} })
+    expect(functionCoverage(noBody, '0')).toEqual({ cov: 0, covKind: 'called' })
+  })
+
+  it('attributes an empty slot by the branch loc: a loc that starts inside the function but ends outside is not counted', () => {
+    const straddle = guarded([0, 4], { branchMap: { '0': { loc: loc(18, 2, 25, 10), locations: [loc(18, 2, 19, 10), empty] } } })
+    // the located consequent (inside) counts, the empty slot (loc straddles the end of the function) does not.
+    expect(functionCoverage(straddle, '0')).toEqual({ cov: 0, covKind: 'min(stmt,branch)' })
+  })
+})

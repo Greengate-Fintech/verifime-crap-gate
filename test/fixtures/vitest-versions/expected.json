@@ -1,0 +1,930 @@
+{
+  "note": [
+    "Ground truth for the coverage join. One row per function ESLint complexity reports in src/ (file, 1-based line and column of the report, and its kind).",
+    "entry: for each Vitest version, the fnMap entry that belongs to the function, as name@line:column of the entry start in coverage/<version>.json, or null when the coverage has no entry for it.",
+    "An entry belongs to the function whose head (declaration start to body start) contains the entry start, innermost first; only <instance_members_initializer> and <static_initializer> entries belong to a class field initialiser or static block.",
+    "At a shared boundary (an outer arrow whose body is the inner arrow) Vitest 4 and 5 start the outer entry there, so it is the outer function's; Vitest 1 to 3 start the inner entry there, so it is the inner function's.",
+    "coverage/<version>.json is the json reporter output of vitest run --coverage (provider v8, vitest.config.mts) with vitest and @vitest/coverage-v8 at that version, keys made relative."
+  ],
+  "notReported": [
+    {
+      "file": "src/shapes.ts",
+      "line": 2,
+      "what": "abstract method (no body)"
+    },
+    {
+      "file": "src/shapes.ts",
+      "line": 19,
+      "what": "overload signature"
+    },
+    {
+      "file": "src/shapes.ts",
+      "line": 20,
+      "what": "overload signature"
+    },
+    {
+      "file": "src/declarations.ts",
+      "line": 1,
+      "what": "enum and namespace declarations (Vitest 4 and 5 give each emitted one an entry at its enum or namespace keyword; no function owns it)"
+    }
+  ],
+  "functions": [
+    {
+      "file": "src/Widget.tsx",
+      "line": 29,
+      "column": 17,
+      "kind": "Arrow function",
+      "label": "tsx component, multi-line destructured props",
+      "entry": {
+        "1.6.1": "Widget@18:22",
+        "3.2.4": "Widget@18:22",
+        "4.1.11": "(anonymous_0)@29:19",
+        "5.0.3": "(anonymous_0)@29:19"
+      }
+    },
+    {
+      "file": "src/Widget.tsx",
+      "line": 31,
+      "column": 89,
+      "kind": "Arrow function",
+      "label": "tsx inline handler",
+      "entry": {
+        "1.6.1": "onClick@31:85",
+        "3.2.4": "onClick@31:85",
+        "4.1.11": "(anonymous_1)@31:91",
+        "5.0.3": "(anonymous_1)@31:91"
+      }
+    },
+    {
+      "file": "src/Widget.tsx",
+      "line": 40,
+      "column": 52,
+      "kind": "Arrow function",
+      "label": "tsx component",
+      "entry": {
+        "1.6.1": "Unused@40:22",
+        "3.2.4": "Unused@40:22",
+        "4.1.11": "(anonymous_2)@40:54",
+        "5.0.3": "(anonymous_2)@40:54"
+      }
+    },
+    {
+      "file": "src/Widget.tsx",
+      "line": 40,
+      "column": 73,
+      "kind": "Arrow function",
+      "label": "tsx inline handler",
+      "entry": {
+        "1.6.1": null,
+        "3.2.4": null,
+        "4.1.11": "(anonymous_3)@40:75",
+        "5.0.3": "(anonymous_3)@40:75"
+      }
+    },
+    {
+      "file": "src/callbacks.ts",
+      "line": 1,
+      "column": 49,
+      "kind": "Arrow function",
+      "label": "top-level arrow",
+      "entry": {
+        "1.6.1": "doubled@1:23",
+        "3.2.4": "doubled@1:23",
+        "4.1.11": "(anonymous_0)@1:51",
+        "5.0.3": "(anonymous_0)@1:51"
+      }
+    },
+    {
+      "file": "src/callbacks.ts",
+      "line": 1,
+      "column": 63,
+      "kind": "Arrow function",
+      "label": "arrow callback",
+      "entry": {
+        "1.6.1": null,
+        "3.2.4": null,
+        "4.1.11": "(anonymous_1)@1:65",
+        "5.0.3": "(anonymous_1)@1:65"
+      }
+    },
+    {
+      "file": "src/callbacks.ts",
+      "line": 3,
+      "column": 50,
+      "kind": "Arrow function",
+      "label": "top-level arrow",
+      "entry": {
+        "1.6.1": "filtered@3:24",
+        "3.2.4": "filtered@3:24",
+        "4.1.11": "(anonymous_2)@3:52",
+        "5.0.3": "(anonymous_2)@3:52"
+      }
+    },
+    {
+      "file": "src/callbacks.ts",
+      "line": 5,
+      "column": 26,
+      "kind": "Arrow function",
+      "label": "arrow callback",
+      "entry": {
+        "1.6.1": null,
+        "3.2.4": null,
+        "4.1.11": "(anonymous_3)@5:28",
+        "5.0.3": "(anonymous_3)@5:28"
+      }
+    },
+    {
+      "file": "src/callbacks.ts",
+      "line": 10,
+      "column": 56,
+      "kind": "Arrow function",
+      "label": "top-level arrow",
+      "entry": {
+        "1.6.1": "neverCalledOuter@10:32",
+        "3.2.4": "neverCalledOuter@10:32",
+        "4.1.11": "(anonymous_4)@10:58",
+        "5.0.3": "(anonymous_4)@10:58"
+      }
+    },
+    {
+      "file": "src/callbacks.ts",
+      "line": 11,
+      "column": 29,
+      "kind": "Arrow function",
+      "label": "callback in uncalled function",
+      "entry": {
+        "1.6.1": null,
+        "3.2.4": null,
+        "4.1.11": "(anonymous_5)@11:31",
+        "5.0.3": "(anonymous_5)@11:31"
+      }
+    },
+    {
+      "file": "src/callbacks.ts",
+      "line": 14,
+      "column": 8,
+      "kind": "Function",
+      "label": "function declaration",
+      "entry": {
+        "1.6.1": "registerHandler@14:7",
+        "3.2.4": "registerHandler@14:7",
+        "4.1.11": "registerHandler@14:76",
+        "5.0.3": "registerHandler@14:76"
+      }
+    },
+    {
+      "file": "src/callbacks.ts",
+      "line": 15,
+      "column": 15,
+      "kind": "Arrow function",
+      "label": "arrow callback",
+      "entry": {
+        "1.6.1": null,
+        "3.2.4": null,
+        "4.1.11": "(anonymous_7)@15:17",
+        "5.0.3": "(anonymous_7)@15:17"
+      }
+    },
+    {
+      "file": "src/callbacks.ts",
+      "line": 18,
+      "column": 41,
+      "kind": "Arrow function",
+      "label": "top-level arrow",
+      "entry": {
+        "1.6.1": "tail@18:20",
+        "3.2.4": "tail@18:20",
+        "4.1.11": "(anonymous_8)@18:43",
+        "5.0.3": "(anonymous_8)@18:43"
+      }
+    },
+    {
+      "file": "src/classes.ts",
+      "line": 2,
+      "column": 13,
+      "kind": "Class field initializer",
+      "label": "field initialiser (literal)",
+      "entry": {
+        "1.6.1": "<instance_members_initializer>@2:2",
+        "3.2.4": "<instance_members_initializer>@2:2",
+        "4.1.11": null,
+        "5.0.3": null
+      }
+    },
+    {
+      "file": "src/classes.ts",
+      "line": 3,
+      "column": 11,
+      "kind": "Class field initializer",
+      "label": "field initialiser (literal)",
+      "entry": {
+        "1.6.1": null,
+        "3.2.4": null,
+        "4.1.11": null,
+        "5.0.3": null
+      }
+    },
+    {
+      "file": "src/classes.ts",
+      "line": 4,
+      "column": 3,
+      "kind": "Method",
+      "label": "arrow-valued field (the arrow)",
+      "entry": {
+        "1.6.1": "onChange@4:13",
+        "3.2.4": "onChange@4:13",
+        "4.1.11": "(anonymous_0)@4:40",
+        "5.0.3": "(anonymous_0)@4:40"
+      }
+    },
+    {
+      "file": "src/classes.ts",
+      "line": 4,
+      "column": 14,
+      "kind": "Class field initializer",
+      "label": "field initialiser (arrow value)",
+      "entry": {
+        "1.6.1": null,
+        "3.2.4": null,
+        "4.1.11": null,
+        "5.0.3": null
+      }
+    },
+    {
+      "file": "src/classes.ts",
+      "line": 5,
+      "column": 3,
+      "kind": "Method",
+      "label": "arrow-valued field (the arrow)",
+      "entry": {
+        "1.6.1": "onClose@5:12",
+        "3.2.4": "onClose@5:12",
+        "4.1.11": "(anonymous_1)@5:26",
+        "5.0.3": "(anonymous_1)@5:26"
+      }
+    },
+    {
+      "file": "src/classes.ts",
+      "line": 5,
+      "column": 13,
+      "kind": "Class field initializer",
+      "label": "field initialiser (arrow value)",
+      "entry": {
+        "1.6.1": null,
+        "3.2.4": null,
+        "4.1.11": null,
+        "5.0.3": null
+      }
+    },
+    {
+      "file": "src/classes.ts",
+      "line": 6,
+      "column": 21,
+      "kind": "Class field initializer",
+      "label": "static field initialiser",
+      "entry": {
+        "1.6.1": "<static_initializer>@6:2",
+        "3.2.4": "<static_initializer>@6:2",
+        "4.1.11": null,
+        "5.0.3": null
+      }
+    },
+    {
+      "file": "src/classes.ts",
+      "line": 7,
+      "column": 3,
+      "kind": "Class static block",
+      "label": "static block",
+      "entry": {
+        "1.6.1": null,
+        "3.2.4": null,
+        "4.1.11": null,
+        "5.0.3": null
+      }
+    },
+    {
+      "file": "src/classes.ts",
+      "line": 11,
+      "column": 3,
+      "kind": "Constructor",
+      "label": "constructor",
+      "entry": {
+        "1.6.1": "Account@11:2",
+        "3.2.4": "Account@11:2",
+        "4.1.11": "constructor@11:31",
+        "5.0.3": "constructor@11:31"
+      }
+    },
+    {
+      "file": "src/classes.ts",
+      "line": 15,
+      "column": 3,
+      "kind": "Getter",
+      "label": "getter",
+      "entry": {
+        "1.6.1": "get doubled@15:2",
+        "3.2.4": "get doubled@15:2",
+        "4.1.11": "doubled@15:24",
+        "5.0.3": "doubled@15:24"
+      }
+    },
+    {
+      "file": "src/classes.ts",
+      "line": 19,
+      "column": 3,
+      "kind": "Setter",
+      "label": "setter",
+      "entry": {
+        "1.6.1": "set amount@19:2",
+        "3.2.4": "set amount@19:2",
+        "4.1.11": "amount@19:24",
+        "5.0.3": "amount@19:24"
+      }
+    },
+    {
+      "file": "src/classes.ts",
+      "line": 23,
+      "column": 3,
+      "kind": "Method",
+      "label": "method",
+      "entry": {
+        "1.6.1": "deposit@23:2",
+        "3.2.4": "deposit@23:2",
+        "4.1.11": "deposit@23:29",
+        "5.0.3": "deposit@23:29"
+      }
+    },
+    {
+      "file": "src/classes.ts",
+      "line": 28,
+      "column": 3,
+      "kind": "Static method",
+      "label": "static method",
+      "entry": {
+        "1.6.1": "create@28:9",
+        "3.2.4": "create@28:9",
+        "4.1.11": "create@28:27",
+        "5.0.3": "create@28:27"
+      }
+    },
+    {
+      "file": "src/curried.ts",
+      "line": 1,
+      "column": 32,
+      "kind": "Arrow function",
+      "label": "curried outer arrow",
+      "entry": {
+        "1.6.1": "add@1:19",
+        "3.2.4": "add@1:19",
+        "4.1.11": "(anonymous_0)@1:20",
+        "5.0.3": "(anonymous_0)@1:20"
+      }
+    },
+    {
+      "file": "src/curried.ts",
+      "line": 1,
+      "column": 47,
+      "kind": "Arrow function",
+      "label": "curried inner arrow (shares end)",
+      "entry": {
+        "1.6.1": null,
+        "3.2.4": null,
+        "4.1.11": "(anonymous_1)@1:49",
+        "5.0.3": "(anonymous_1)@1:49"
+      }
+    },
+    {
+      "file": "src/curried.ts",
+      "line": 3,
+      "column": 39,
+      "kind": "Arrow function",
+      "label": "curried outer arrow",
+      "entry": {
+        "1.6.1": "neverInner@3:26",
+        "3.2.4": "neverInner@3:26",
+        "4.1.11": "(anonymous_2)@3:27",
+        "5.0.3": "(anonymous_2)@3:27"
+      }
+    },
+    {
+      "file": "src/curried.ts",
+      "line": 3,
+      "column": 54,
+      "kind": "Arrow function",
+      "label": "curried inner arrow (shares end)",
+      "entry": {
+        "1.6.1": null,
+        "3.2.4": null,
+        "4.1.11": "(anonymous_3)@3:56",
+        "5.0.3": "(anonymous_3)@3:56"
+      }
+    },
+    {
+      "file": "src/curried.ts",
+      "line": 5,
+      "column": 32,
+      "kind": "Arrow function",
+      "label": "curried arrow, three levels: outer",
+      "entry": {
+        "1.6.1": "tri@5:19",
+        "3.2.4": "tri@5:19",
+        "4.1.11": "(anonymous_4)@5:20",
+        "5.0.3": "(anonymous_4)@5:20"
+      }
+    },
+    {
+      "file": "src/curried.ts",
+      "line": 5,
+      "column": 47,
+      "kind": "Arrow function",
+      "label": "curried arrow, three levels: middle",
+      "entry": {
+        "1.6.1": null,
+        "3.2.4": null,
+        "4.1.11": "(anonymous_5)@5:35",
+        "5.0.3": "(anonymous_5)@5:35"
+      }
+    },
+    {
+      "file": "src/curried.ts",
+      "line": 5,
+      "column": 62,
+      "kind": "Arrow function",
+      "label": "curried arrow, three levels: inner",
+      "entry": {
+        "1.6.1": null,
+        "3.2.4": null,
+        "4.1.11": "(anonymous_6)@5:65",
+        "5.0.3": "(anonymous_6)@5:65"
+      }
+    },
+    {
+      "file": "src/curried.ts",
+      "line": 15,
+      "column": 18,
+      "kind": "Arrow function",
+      "label": "typed middleware chain: outer",
+      "entry": {
+        "1.6.1": "logger@15:2",
+        "3.2.4": "logger@15:2",
+        "4.1.11": "(anonymous_7)@15:3",
+        "5.0.3": "(anonymous_7)@15:3"
+      }
+    },
+    {
+      "file": "src/curried.ts",
+      "line": 16,
+      "column": 38,
+      "kind": "Arrow function",
+      "label": "typed middleware chain: middle",
+      "entry": {
+        "1.6.1": null,
+        "3.2.4": null,
+        "4.1.11": "(anonymous_8)@16:3",
+        "5.0.3": "(anonymous_8)@16:3"
+      }
+    },
+    {
+      "file": "src/curried.ts",
+      "line": 17,
+      "column": 28,
+      "kind": "Arrow function",
+      "label": "typed middleware chain: inner",
+      "entry": {
+        "1.6.1": null,
+        "3.2.4": null,
+        "4.1.11": "(anonymous_9)@17:30",
+        "5.0.3": "(anonymous_9)@17:30"
+      }
+    },
+    {
+      "file": "src/declarations.ts",
+      "line": 13,
+      "column": 10,
+      "kind": "Function",
+      "label": "function in an exported namespace",
+      "entry": {
+        "1.6.1": "scale@13:9",
+        "3.2.4": "scale@13:9",
+        "4.1.11": "scale@13:43",
+        "5.0.3": "scale@13:43"
+      }
+    },
+    {
+      "file": "src/declarations.ts",
+      "line": 19,
+      "column": 44,
+      "kind": "Arrow function",
+      "label": "arrow in a namespace that is not exported",
+      "entry": {
+        "1.6.1": "Local2.twice@19:23",
+        "3.2.4": "Local2.twice@19:23",
+        "4.1.11": "(anonymous_4)@19:46",
+        "5.0.3": "(anonymous_4)@19:46"
+      }
+    },
+    {
+      "file": "src/declarations.ts",
+      "line": 28,
+      "column": 12,
+      "kind": "Function",
+      "label": "function in a nested namespace",
+      "entry": {
+        "1.6.1": "size@28:11",
+        "3.2.4": "size@28:11",
+        "4.1.11": "size@28:33",
+        "5.0.3": "size@28:33"
+      }
+    },
+    {
+      "file": "src/declarations.ts",
+      "line": 34,
+      "column": 41,
+      "kind": "Arrow function",
+      "label": "top-level arrow using enums and namespaces",
+      "entry": {
+        "1.6.1": "pick@34:20",
+        "3.2.4": "pick@34:20",
+        "4.1.11": "(anonymous_9)@34:44",
+        "5.0.3": "(anonymous_9)@34:44"
+      }
+    },
+    {
+      "file": "src/jsx.ts",
+      "line": 7,
+      "column": 105,
+      "kind": "Arrow function",
+      "label": "top-level arrow",
+      "entry": {
+        "1.6.1": "h@7:17",
+        "3.2.4": "h@7:17",
+        "4.1.11": "(anonymous_0)@7:108",
+        "5.0.3": "(anonymous_0)@7:108"
+      }
+    },
+    {
+      "file": "src/shapes.ts",
+      "line": 4,
+      "column": 3,
+      "kind": "Method",
+      "label": "abstract class concrete method",
+      "entry": {
+        "1.6.1": "describe@4:2",
+        "3.2.4": "describe@4:2",
+        "4.1.11": "describe@4:21",
+        "5.0.3": "describe@4:21"
+      }
+    },
+    {
+      "file": "src/shapes.ts",
+      "line": 10,
+      "column": 3,
+      "kind": "Constructor",
+      "label": "constructor",
+      "entry": {
+        "1.6.1": "Square@10:2",
+        "3.2.4": "Square@10:2",
+        "4.1.11": "constructor@10:36",
+        "5.0.3": "constructor@10:36"
+      }
+    },
+    {
+      "file": "src/shapes.ts",
+      "line": 14,
+      "column": 3,
+      "kind": "Method",
+      "label": "method",
+      "entry": {
+        "1.6.1": "area@14:2",
+        "3.2.4": "area@14:2",
+        "4.1.11": "area@14:17",
+        "5.0.3": "area@14:17"
+      }
+    },
+    {
+      "file": "src/shapes.ts",
+      "line": 21,
+      "column": 8,
+      "kind": "Function",
+      "label": "overload implementation",
+      "entry": {
+        "1.6.1": "parse@21:7",
+        "3.2.4": "parse@21:7",
+        "4.1.11": "parse@21:63",
+        "5.0.3": "parse@21:63"
+      }
+    },
+    {
+      "file": "src/shapes.ts",
+      "line": 26,
+      "column": 3,
+      "kind": "Method",
+      "label": "object literal method",
+      "entry": {
+        "1.6.1": "add@26:2",
+        "3.2.4": "add@26:2",
+        "4.1.11": "add@26:36",
+        "5.0.3": "add@26:36"
+      }
+    },
+    {
+      "file": "src/shapes.ts",
+      "line": 29,
+      "column": 3,
+      "kind": "Method",
+      "label": "object literal method",
+      "entry": {
+        "1.6.1": "sub@29:2",
+        "3.2.4": "sub@29:2",
+        "4.1.11": "sub@29:36",
+        "5.0.3": "sub@29:36"
+      }
+    },
+    {
+      "file": "src/shapes.ts",
+      "line": 32,
+      "column": 3,
+      "kind": "Method",
+      "label": "object literal arrow",
+      "entry": {
+        "1.6.1": "mul@32:7",
+        "3.2.4": "mul@32:7",
+        "4.1.11": "(anonymous_6)@32:41",
+        "5.0.3": "(anonymous_6)@32:41"
+      }
+    },
+    {
+      "file": "src/shapes.ts",
+      "line": 35,
+      "column": 27,
+      "kind": "Arrow function",
+      "label": "IIFE",
+      "entry": {
+        "1.6.1": null,
+        "3.2.4": null,
+        "4.1.11": "(anonymous_7)@35:29",
+        "5.0.3": "(anonymous_7)@35:29"
+      }
+    },
+    {
+      "file": "src/shapes.ts",
+      "line": 39,
+      "column": 8,
+      "kind": "Async function",
+      "label": "async function",
+      "entry": {
+        "1.6.1": "loadValue@39:0",
+        "3.2.4": "loadValue@39:0",
+        "4.1.11": "loadValue@39:51",
+        "5.0.3": "loadValue@39:51"
+      }
+    },
+    {
+      "file": "src/shapes.ts",
+      "line": 43,
+      "column": 8,
+      "kind": "Generator function",
+      "label": "generator function",
+      "entry": {
+        "1.6.1": "counter@43:7",
+        "3.2.4": "counter@43:7",
+        "4.1.11": "counter@43:59",
+        "5.0.3": "counter@43:59"
+      }
+    },
+    {
+      "file": "src/shapes.ts",
+      "line": 47,
+      "column": 8,
+      "kind": "Async generator function",
+      "label": "async generator function",
+      "entry": {
+        "1.6.1": "asyncCounter@47:0",
+        "3.2.4": "asyncCounter@47:0",
+        "4.1.11": "asyncCounter@47:62",
+        "5.0.3": "asyncCounter@47:62"
+      }
+    },
+    {
+      "file": "src/shapes.ts",
+      "line": 51,
+      "column": 8,
+      "kind": "Function",
+      "label": "nested depth 1",
+      "entry": {
+        "1.6.1": "level1@51:7",
+        "3.2.4": "level1@51:7",
+        "4.1.11": "level1@51:42",
+        "5.0.3": "level1@51:42"
+      }
+    },
+    {
+      "file": "src/shapes.ts",
+      "line": 52,
+      "column": 3,
+      "kind": "Function",
+      "label": "nested depth 2",
+      "entry": {
+        "1.6.1": "level2@52:2",
+        "3.2.4": "level2@52:2",
+        "4.1.11": "level2@52:37",
+        "5.0.3": "level2@52:37"
+      }
+    },
+    {
+      "file": "src/shapes.ts",
+      "line": 53,
+      "column": 40,
+      "kind": "Arrow function",
+      "label": "nested depth 3",
+      "entry": {
+        "1.6.1": "level3@53:19",
+        "3.2.4": "level3@53:19",
+        "4.1.11": "(anonymous_13)@53:42",
+        "5.0.3": "(anonymous_13)@53:42"
+      }
+    },
+    {
+      "file": "src/shapes.ts",
+      "line": 59,
+      "column": 8,
+      "kind": "Function",
+      "label": "nested depth 1",
+      "entry": {
+        "1.6.1": "deepUncalled@59:7",
+        "3.2.4": "deepUncalled@59:7",
+        "4.1.11": "deepUncalled@59:39",
+        "5.0.3": "deepUncalled@59:39"
+      }
+    },
+    {
+      "file": "src/shapes.ts",
+      "line": 60,
+      "column": 3,
+      "kind": "Function",
+      "label": "nested depth 2",
+      "entry": {
+        "1.6.1": null,
+        "3.2.4": null,
+        "4.1.11": "inner@60:27",
+        "5.0.3": "inner@60:27"
+      }
+    },
+    {
+      "file": "src/shapes.ts",
+      "line": 61,
+      "column": 34,
+      "kind": "Arrow function",
+      "label": "nested depth 3",
+      "entry": {
+        "1.6.1": null,
+        "3.2.4": null,
+        "4.1.11": "(anonymous_16)@61:36",
+        "5.0.3": "(anonymous_16)@61:36"
+      }
+    },
+    {
+      "file": "src/signatures.ts",
+      "line": 15,
+      "column": 8,
+      "kind": "Function",
+      "label": "multi-line signature (function declaration)",
+      "entry": {
+        "1.6.1": "configure@15:7",
+        "3.2.4": "configure@15:7",
+        "4.1.11": "configure@27:21",
+        "5.0.3": "configure@27:21"
+      }
+    },
+    {
+      "file": "src/signatures.ts",
+      "line": 43,
+      "column": 31,
+      "kind": "Async arrow function",
+      "label": "multi-line signature (async arrow)",
+      "entry": {
+        "1.6.1": "describeSettings@31:32",
+        "3.2.4": "describeSettings@31:32",
+        "4.1.11": "(anonymous_1)@43:33",
+        "5.0.3": "(anonymous_1)@43:33"
+      }
+    },
+    {
+      "file": "src/signatures.ts",
+      "line": 47,
+      "column": 64,
+      "kind": "Arrow function",
+      "label": "default-parameter arrow",
+      "entry": {
+        "1.6.1": "scale@47:51",
+        "3.2.4": "scale@47:51",
+        "4.1.11": "(anonymous_3)@47:66",
+        "5.0.3": "(anonymous_3)@47:66"
+      }
+    },
+    {
+      "file": "src/signatures.ts",
+      "line": 47,
+      "column": 83,
+      "kind": "Arrow function",
+      "label": "top-level arrow",
+      "entry": {
+        "1.6.1": "withDefault@47:27",
+        "3.2.4": "withDefault@47:27",
+        "4.1.11": "(anonymous_2)@47:85",
+        "5.0.3": "(anonymous_2)@47:85"
+      }
+    },
+    {
+      "file": "src/signatures.ts",
+      "line": 49,
+      "column": 70,
+      "kind": "Arrow function",
+      "label": "default-parameter arrow",
+      "entry": {
+        "1.6.1": "scale@49:57",
+        "3.2.4": "scale@49:57",
+        "4.1.11": "(anonymous_5)@49:72",
+        "5.0.3": "(anonymous_5)@49:72"
+      }
+    },
+    {
+      "file": "src/signatures.ts",
+      "line": 49,
+      "column": 88,
+      "kind": "Arrow function",
+      "label": "top-level arrow",
+      "entry": {
+        "1.6.1": "withUnusedDefault@49:33",
+        "3.2.4": "withUnusedDefault@49:33",
+        "4.1.11": "(anonymous_4)@49:90",
+        "5.0.3": "(anonymous_4)@49:90"
+      }
+    },
+    {
+      "file": "src/unloaded.ts",
+      "line": 1,
+      "column": 53,
+      "kind": "Arrow function",
+      "label": "unloaded file: arrow",
+      "entry": {
+        "1.6.1": null,
+        "3.2.4": null,
+        "4.1.11": "(anonymous_0)@1:55",
+        "5.0.3": "(anonymous_0)@1:55"
+      }
+    },
+    {
+      "file": "src/unloaded.ts",
+      "line": 1,
+      "column": 67,
+      "kind": "Arrow function",
+      "label": "unloaded file: arrow callback",
+      "entry": {
+        "1.6.1": null,
+        "3.2.4": null,
+        "4.1.11": "(anonymous_1)@1:69",
+        "5.0.3": "(anonymous_1)@1:69"
+      }
+    },
+    {
+      "file": "src/unloaded.ts",
+      "line": 4,
+      "column": 11,
+      "kind": "Class field initializer",
+      "label": "unloaded file: field initialiser",
+      "entry": {
+        "1.6.1": null,
+        "3.2.4": null,
+        "4.1.11": null,
+        "5.0.3": null
+      }
+    },
+    {
+      "file": "src/unloaded.ts",
+      "line": 5,
+      "column": 3,
+      "kind": "Class static block",
+      "label": "unloaded file: static block",
+      "entry": {
+        "1.6.1": null,
+        "3.2.4": null,
+        "4.1.11": null,
+        "5.0.3": null
+      }
+    },
+    {
+      "file": "src/unloaded.ts",
+      "line": 9,
+      "column": 3,
+      "kind": "Method",
+      "label": "unloaded file: method",
+      "entry": {
+        "1.6.1": null,
+        "3.2.4": null,
+        "4.1.11": "run@9:17",
+        "5.0.3": "run@9:17"
+      }
+    }
+  ]
+}

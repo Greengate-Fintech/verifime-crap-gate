@@ -42,6 +42,11 @@ Functions the coverage provider gives no entry for. Each is scored at coverage 0
 
 The list only shrinks. An unmatched function that is not listed fails the measure, and a listed entry that now matches is stale.
 
+A function is unmatched only when the coverage has no entry of its own for it (see "How a function is joined to its coverage"). It never takes another function's entry. With Vitest's v8 coverage, the usual cases are:
+
+- class field initialisers and class static blocks, which ESLint counts as functions;
+- on Vitest 1 to 3 only: anonymous callbacks, functions inside a function that never ran, and every function of a file no test loads.
+
 ### Report
 
 `coverage/crap-report.json` is written by `measure`. Its fields are `summary`, `functions`, `unmatched`, `listedUnmatched`, `staleUnmatched` and `acceptedUnmatched`.
@@ -71,6 +76,28 @@ The gate runs ESLint through its Node API. It does not read your ESLint config a
 - ignored: files under `node_modules`, `dist`, `coverage` and `cdk.out` folders, and `*.d.ts` files.
 
 A directory of the default scope that does not exist is skipped. A directory in a `scope` that your config sets must exist: a missing one, or one that is a file, exits 1 with `Invalid <config file>: key "scope" entry "<dir>" is not an existing directory`. When no scope directory exists, nothing is measured and the run exits 1 with `No functions were measured`.
+
+### How a function is joined to its coverage
+
+The lint pass also records where each reported function is declared: where its declaration starts (its `export`, its modifiers and method key, or its `const` statement when that statement declares only this function; with several declarators, the declarator), where its body starts, and where its node ends. A coverage entry belongs to the innermost function whose declaration contains the start of the entry:
+
+- An entry that starts exactly on one of the function's five start points is paired first: its declaration start, its method or property key, its node start, the position ESLint reports it at, and its body start. Vitest 1 to 3 start an entry at the function head, Vitest 4 and 5 mostly at its body, so both are found. Vitest 4 and 5 start the entry of an arrow whose body is another arrow (a curried chain) at its first parameter instead; that entry is found by the next rule.
+- Any other entry goes to the innermost function still without one, but only if it starts in that function's head. The head runs from the declaration start to the body's first token after any opening parentheses (so `(e) => (e as Error).message` reaches an entry at `e`), or to the start of the body when the body is itself a function. An entry inside a body is never given to the function around it.
+- Each function owns at most one entry. Only a converter's initialiser entry (`<instance_members_initializer>`, `<static_initializer>`) can belong to a class field initialiser or a static block.
+
+So the join does not depend on how long a signature is, on the Vitest version or on the order of the coverage files. When two coverage files cover the same source file, entries with an identical span are merged and their hit counts added; entries with different spans stay separate.
+
+A coverage entry that no function takes is printed before the summary line, as `Coverage entry joined to no function: <file>:<line>:<column> <name>`. It is a notice only: it is not scored and it does not change the exit code. Not listed: placeholder entries for files no test loads, initialiser entries, and the entries Vitest 4 and 5 give each TypeScript `enum` and `namespace` (each compiles to a function ESLint does not report; the lint pass records where they start). On the four Vitest versions the gate is tested with, no other construct produces an entry no function takes.
+
+A complexity message the lint pass recorded no span for cannot be joined: it is a problem, `Complexity message with no function span: was the file linted by the gate?`, and the run exits 1.
+
+Known limit: when one source file is covered both by a package on Vitest 1 to 3 and by a package on Vitest 4 or 5 (only during a migration), the two coverage files start their entries and statements at different places. The entries do not merge, only one of them is used, and the statements of both are counted, so that function's coverage can read low. Move every package to the same Vitest major to remove it.
+
+### How a function's coverage is computed
+
+A function's coverage is the lower of its statement coverage and its branch coverage (`min(stmt,branch)`), and CRAP uses that value. Statements and branch locations count for the function that contains them. An `if` without an `else` has two branch locations: the consequent, and an implicit `else` that Vitest 4 and 5 record with an empty position. The implicit `else` counts for the function that contains its `if`, with its own hit count, so a function that ran down the default path of a guard does not score coverage 0. The same rule can raise a score: an implicit `else` that never ran (a guard that always fired) counts as an uncovered branch. A row whose score rises needs `baseline --allow-growth` on re-baseline.
+
+Known limit: a `?? []` (or another `??`) whose two branch locations both show no hits although the statement ran was seen in a real project and could not be reproduced on a synthetic package under Vitest 4.1 and 5.0. It is not the implicit `else` (a `??` has two located branches), so the gate does not correct it. Such a function can read lower coverage than it earned.
 
 ## Commands
 
@@ -244,7 +271,7 @@ The package's `bin` is `crap-gate`, which is `dist/cli.cjs`.
 
 `dist/` is generated and is not committed on `main`. `npm run build` produces it, with esbuild, from `src/`. The release workflow commits it on the release commit that a release tag points to (see Releasing). The bundle has three files:
 
-- `dist/cli.cjs` bundles the gate, ESLint, typescript-eslint and TypeScript. It has no static `require` of a module that is not a Node built-in. ESLint and TypeScript keep dynamic loading sites (`require`, `import()`, `createRequire`) in the bundle, and the gate's options never reach them: it does no config lookup and loads no plugins. So it never resolves a module from the project it measures. A project with a different TypeScript, its own ESLint or its own ESLint config gets the same result.
+- `dist/cli.cjs` bundles the gate, ESLint, typescript-eslint and TypeScript. It has no static `require` of a module that is not a Node built-in. ESLint and TypeScript keep dynamic loading sites (`require`, `import()`, `createRequire`) in the bundle, and the gate's options never reach them: it does no config lookup and loads no plugin from the project (the lint pass registers only the gate's own companion rules). So it never resolves a module from the project it measures. A project with a different TypeScript, its own ESLint or its own ESLint config gets the same result.
 - `dist/action.cjs` is the action entry. It requires `./cli.cjs`, so the toolchain is bundled once.
 - `dist/THIRD-PARTY-LICENSES.txt` lists every package bundled into the CLI, with its version and licence text.
 

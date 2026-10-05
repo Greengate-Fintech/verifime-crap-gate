@@ -3,6 +3,7 @@ import { DEFAULT_CONFIG } from '../src/config'
 import type { CrapConfig } from '../src/config'
 import { compileScope, isInScope, measure } from '../src/measure'
 import type { IstanbulFileCoverage } from '../src/types'
+import { withPointSpans } from './helpers/spans'
 
 const ROOT = '/fake/repo'
 const SPAN = { start: { line: 1, column: 0 }, end: { line: 5, column: 1 } }
@@ -31,7 +32,7 @@ const config = (changes: Partial<CrapConfig>): CrapConfig => ({ ...DEFAULT_CONFI
 
 const run = (rel: string, changes: Partial<CrapConfig>, coverageKey?: string) => {
   const { eslint, coverage } = oneFile(rel, coverageKey)
-  const result = measure(eslint, coverage, ROOT, () => '', config(changes))
+  const result = measure(withPointSpans(eslint), coverage, ROOT, () => '', config(changes))
   return { files: result.functions.map((f) => f.file), unmatched: result.unmatched.length, problems: result.problems.length }
 }
 

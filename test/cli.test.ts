@@ -6,6 +6,7 @@ import { escapeData, escapeProperty, isMoveSuspect, parseArgs, runBaseline, runB
 import type { MeasureOptions } from '../src/cli'
 import type { Violation } from '../src/ratchet'
 import type { FunctionScore } from '../src/types'
+import { withPointSpansText } from './helpers/spans'
 
 const FIXTURES = path.join(__dirname, 'fixtures')
 const FAKE_ROOT = '/fake/repo'
@@ -37,7 +38,7 @@ const makeSandbox = (): Sandbox => {
 }
 
 const writeInputs = (box: Sandbox, eslintText = readFixture('eslint.json')): void => {
-  writeFileSync(box.opts.eslintPath, withRoot(eslintText, box.root))
+  writeFileSync(box.opts.eslintPath, withRoot(withPointSpansText(eslintText), box.root))
   writeFileSync(box.opts.coveragePaths[0], withRoot(readFixture('coverage-final.json'), box.root))
 }
 
@@ -196,6 +197,26 @@ describe('runMeasure', () => {
     expect(report.unmatched).toEqual([])
     expect(logs).toEqual(['CRAP measure: functions=7 over5=0 sumOver5=0.0 unmatched=0'])
   })
+
+  it('prints a coverage entry joined to no function before the summary, and still returns 0', () => {
+    writeInputs(box)
+    const coverage = JSON.parse(readFileSync(box.opts.coveragePaths[0], 'utf8'))
+    const [file] = Object.values(coverage) as { fnMap: Record<string, unknown>; f: Record<string, number> }[]
+    const at = { start: { line: 40, column: 0 }, end: { line: 40, column: 9 } }
+    file.fnMap['99'] = { name: 'stray', decl: at, loc: at }
+    file.f['99'] = 1
+    writeFileSync(box.opts.coveragePaths[0], JSON.stringify(coverage))
+    const { io, logs, errors } = makeIo()
+    expect(runMeasure(box.opts, io)).toBe(0)
+    expect(errors).toEqual([])
+    expect(logs).toEqual([
+      'Coverage entry joined to no function: src/sample.ts:40:1 stray',
+      'CRAP measure: functions=7 over5=0 sumOver5=0.0 unmatched=0',
+    ])
+    expect(Object.keys(JSON.parse(readFileSync(box.opts.outPath, 'utf8')))).toEqual([
+      'summary', 'functions', 'unmatched', 'listedUnmatched', 'staleUnmatched', 'acceptedUnmatched',
+    ])
+  })
 })
 
 describe('runMeasure: several coverage files', () => {
@@ -222,7 +243,7 @@ describe('runMeasure: several coverage files', () => {
     eslint.push({ filePath: `${box.root}/cdk/lib/stack.ts`, messages: [CDK_MESSAGE] })
     mkdirSync(path.join(box.root, 'cdk/lib'), { recursive: true })
     mkdirSync(path.join(box.root, 'cdk/coverage'), { recursive: true })
-    writeFileSync(box.opts.eslintPath, JSON.stringify(eslint))
+    writeFileSync(box.opts.eslintPath, withPointSpansText(JSON.stringify(eslint)))
     const cdkCoveragePath = path.join(box.root, 'cdk/coverage/coverage-final.json')
     writeFileSync(cdkCoveragePath, JSON.stringify(cdkCoverage(box.root)))
     return cdkCoveragePath

@@ -2,29 +2,31 @@ import { readFileSync, realpathSync } from 'fs'
 import path from 'path'
 import { DEFAULT_CONFIG } from './config'
 import type { CrapConfig } from './config'
-import { crapScore, functionCoverage, rawFunctionCoverage, toSpan } from './score'
-import type { Position, Span } from './score'
+import { assignEntries, mergeCoverage, spanPairer, unownedEntries } from './join'
+import { crapScore, functionCoverage, rawFunctionCoverage } from './score'
 import type {
   EslintFileResult,
   EslintMessage,
   FunctionScore,
+  FunctionSpan,
   IstanbulFileCoverage,
+  SourcePoint,
   MeasureProblem,
   Measurement,
 } from './types'
 
-// Joins ESLint complexity messages to Istanbul fnMap entries. The matching order, naming rules
-// and patterns are load-bearing: changing any of them shifts scores. Where several candidates
-// tie on a distance or position, the first minimum in fnMap order wins.
+// Scores each ESLint complexity message from the Istanbul fnMap entry that belongs to its
+// function (the join is in join.ts). The naming rules and patterns are load-bearing: changing
+// any of them shifts symbols.
 //
-// Fails closed: an ESLint message that is not a parseable complexity message, or coverage for
-// an in-scope file that ESLint never reported on, is a problem rather than something skipped.
+// Fails closed: an ESLint message that is not a parseable complexity message, a complexity
+// message with no function span, or coverage for an in-scope file that ESLint never reported on,
+// is a problem rather than something skipped.
 
 type ReadSource = (absPath: string) => string
 type LineAt = (lineNumber: number) => string
 
 const ANONYMOUS = '(anonymous)'
-const MATCH_LOOK_AHEAD_LINES = 8
 const NAME_LOOK_BACK_LINES = 8
 
 const EXCLUDE =
@@ -133,66 +135,10 @@ const groupCoverageByFile = (
   return byFile
 }
 
-// ---------------------------------------------------------------------------------------
-// Matching an ESLint message to an Istanbul fnMap entry
-// ---------------------------------------------------------------------------------------
-
-interface Candidate {
-  id: string
+/** A function's own fnMap entry: an id in the (merged) coverage of its file. */
+interface Joined {
   entry: IstanbulFileCoverage
-  name: string
-  span: Span
-}
-
-// Object.entries orders integer-like fnMap keys numerically, which equals Istanbul's ascending
-// ids and the insertion order for real output.
-const candidatesOf = (entries: IstanbulFileCoverage[]): Candidate[] =>
-  entries.flatMap((entry) =>
-    Object.entries(entry.fnMap).map(([id, fn]) => ({
-      id,
-      entry,
-      name: fn.name,
-      span: toSpan(fn.loc),
-    })),
-  )
-
-const comparePositions = (a: Position, b: Position): number => a[0] - b[0] || a[1] - b[1]
-
-/** First minimum wins on ties. */
-const firstMin = (indices: number[], compare: (a: number, b: number) => number): number =>
-  indices.reduce((best, i) => (compare(i, best) < 0 ? i : best))
-
-const matchExact = (fns: Candidate[], free: number[], point: Position): number | null => {
-  const onLine = free.filter((i) => fns[i].span[0][0] === point[0])
-  const columnGap = (i: number): number => Math.abs(fns[i].span[0][1] - point[1])
-  return onLine.length > 0 ? firstMin(onLine, (a, b) => columnGap(a) - columnGap(b)) : null
-}
-
-const matchBody = (fns: Candidate[], free: number[], point: Position): number | null => {
-  const after = free.filter(
-    (i) =>
-      comparePositions(fns[i].span[0], point) >= 0 &&
-      fns[i].span[0][0] - point[0] <= MATCH_LOOK_AHEAD_LINES,
-  )
-  return after.length > 0
-    ? firstMin(after, (a, b) => comparePositions(fns[a].span[0], fns[b].span[0]))
-    : null
-}
-
-const matchContain = (fns: Candidate[], free: number[], point: Position): number | null => {
-  const lineSpan = (i: number): number => fns[i].span[1][0] - fns[i].span[0][0]
-  const enclosing = free.filter(
-    (i) =>
-      comparePositions(fns[i].span[0], point) <= 0 && comparePositions(point, fns[i].span[1]) <= 0,
-  )
-  return enclosing.length > 0 ? firstMin(enclosing, (a, b) => lineSpan(a) - lineSpan(b)) : null
-}
-
-const findMatch = (fns: Candidate[], used: ReadonlySet<number>, point: Position): number | null => {
-  const free = fns.map((_, i) => i).filter((i) => !used.has(i))
-  return (
-    matchExact(fns, free, point) ?? matchBody(fns, free, point) ?? matchContain(fns, free, point)
-  )
+  id: string
 }
 
 // ---------------------------------------------------------------------------------------
@@ -202,7 +148,6 @@ const findMatch = (fns: Candidate[], used: ReadonlySet<number>, point: Position)
 interface ParsedMessage {
   cc: number
   line: number
-  point: Position
   quotedName: string | undefined
   kind: string
 }
@@ -212,9 +157,10 @@ const parseName = (message: string): { quotedName: string | undefined; kind: str
   return { quotedName: name?.[3] || undefined, kind: name?.[2] ?? '?' }
 }
 
-const pointOf = (m: EslintMessage): Position => [m.line, (m.column || 1) - 1]
-
 type Classified = { parsed: ParsedMessage } | { problem: string } | { skip: true }
+
+/** A complexity message the lint pass recorded no function span for: it cannot be joined. */
+const NO_SPAN = 'Complexity message with no function span: was the file linted by the gate?'
 
 const problemText = (m: EslintMessage): string =>
   m.ruleId === null || m.ruleId === 'complexity' ? m.message : `[${m.ruleId}] ${m.message}`
@@ -233,7 +179,7 @@ const classify = (m: EslintMessage): Classified => {
   if (isInlineConfigNotice(m)) return { skip: true }
   const complexity = m.ruleId === 'complexity' && !m.fatal ? CC_RE.exec(m.message) : null
   if (!complexity) return { problem: problemText(m) }
-  const parsed = { cc: Number(complexity[1]), line: m.line, point: pointOf(m), ...parseName(m.message) }
+  const parsed = { cc: Number(complexity[1]), line: m.line, ...parseName(m.message) }
   return { parsed }
 }
 
@@ -278,12 +224,12 @@ const guessName = (lineAt: LineAt, line: number): string => {
   return ANONYMOUS
 }
 
-const istanbulName = (kind: string, fn: Candidate | null): string | null =>
-  fn?.name && !fn.name.startsWith('(')
-    ? fn.name + (kind === 'Constructor' ? '.constructor' : '')
-    : null
+const istanbulName = (kind: string, fn: Joined | null): string | null => {
+  const name = fn?.entry.fnMap[fn.id].name
+  return name && !name.startsWith('(') ? name + (kind === 'Constructor' ? '.constructor' : '') : null
+}
 
-const resolveSymbol = (parsed: ParsedMessage, fn: Candidate | null, lineAt: LineAt): string => {
+const resolveSymbol = (parsed: ParsedMessage, fn: Joined | null, lineAt: LineAt): string => {
   const quoted = parsed.quotedName || ANONYMOUS
   const named = quoted === ANONYMOUS ? (istanbulName(parsed.kind, fn) ?? ANONYMOUS) : quoted
   return named === ANONYMOUS ? guessName(lineAt, parsed.line) : named
@@ -297,7 +243,7 @@ const scoreMatched = (
   file: string,
   symbol: string,
   parsed: ParsedMessage,
-  fn: Candidate,
+  fn: Joined,
 ): FunctionScore => {
   const { cov, covKind } = functionCoverage(fn.entry, fn.id)
   // CRAP uses the unrounded coverage; only the report rounds.
@@ -318,17 +264,31 @@ interface FileInput {
   rel: string
   abs: string
   messages: EslintMessage[]
+  spans: FunctionSpan[]
+  declarations: SourcePoint[]
 }
 
 const recordFunction = (
   input: FileInput,
   parsed: ParsedMessage,
-  fn: Candidate | null,
+  fn: Joined | null,
   symbol: string,
   out: Measurement,
 ): void => {
   if (fn) out.functions.push(scoreMatched(input.rel, symbol, parsed, fn))
   else out.unmatched.push({ file: input.rel, symbol, line: parsed.line, cc: parsed.cc, kind: parsed.kind })
+}
+
+/** A complexity message with the index of its span, a problem, or null for a message to skip. */
+const prepare = (
+  message: EslintMessage,
+  pair: (m: EslintMessage) => number | null,
+): { parsed: ParsedMessage; span: number } | { problem: string } | null => {
+  const classified = classify(message)
+  if ('skip' in classified) return null
+  if ('problem' in classified) return classified
+  const span = pair(message)
+  return span === null ? { problem: NO_SPAN } : { parsed: classified.parsed, span }
 }
 
 const measureFile = (
@@ -337,20 +297,23 @@ const measureFile = (
   readSource: ReadSource,
   out: Measurement,
 ): void => {
-  const fns = candidatesOf(entries)
-  const used = new Set<number>()
+  const entry = mergeCoverage(entries)
+  const owned = assignEntries(input.spans, entry)
+  for (const e of unownedEntries(entry, owned, input.declarations)) {
+    out.unjoined?.push({ file: input.rel, line: e.start[0], column: e.start[1] + 1, name: e.name })
+  }
+  const pair = spanPairer(input.spans)
   const lineAt = lazyLineReader(readSource, input.abs)
   for (const message of input.messages) {
-    const classified = classify(message)
-    if ('skip' in classified) continue
-    if ('problem' in classified) {
-      out.problems.push({ file: input.rel, line: message.line, message: classified.problem })
+    const prepared = prepare(message, pair)
+    if (prepared === null) continue
+    if ('problem' in prepared) {
+      out.problems.push({ file: input.rel, line: message.line, message: prepared.problem })
       continue
     }
-    const { parsed } = classified
-    const index = findMatch(fns, used, parsed.point)
-    if (index !== null) used.add(index)
-    const fn = index === null ? null : fns[index]
+    const { parsed, span } = prepared
+    const id = owned.get(span)
+    const fn = entry && id !== undefined ? { entry, id } : null
     recordFunction(input, parsed, fn, resolveSymbol(parsed, fn, lineAt), out)
   }
 }
@@ -367,7 +330,7 @@ const inScopeFiles = (eslint: EslintFileResult[], repoRoot: string, rules: Scope
   eslint
     .map((f) => {
       const abs = realPathOf(path.resolve(repoRoot, f.filePath))
-      return { rel: toPosix(path.relative(repoRoot, abs)), abs, messages: f.messages }
+      return { rel: toPosix(path.relative(repoRoot, abs)), abs, messages: f.messages, spans: f.spans ?? [], declarations: f.declarations ?? [] }
     })
     .filter((f) => rules.inScope(f.rel))
 
@@ -393,7 +356,7 @@ export const measure = (
   const rules = compileScope(config)
   const files = inScopeFiles(eslint, repoRoot, rules)
   const byFile = groupCoverageByFile(coverage, repoRoot, new Set(files.map((f) => f.rel)), rules.anchors)
-  const out: Measurement = { functions: [], unmatched: [], problems: uncoveredByEslint(byFile, files, rules) }
+  const out: Measurement = { functions: [], unmatched: [], problems: uncoveredByEslint(byFile, files, rules), unjoined: [] }
   for (const file of files) measureFile(file, byFile.get(file.rel) ?? [], readSource, out)
   return out
 }
