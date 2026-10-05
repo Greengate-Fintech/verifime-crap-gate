@@ -56,12 +56,19 @@ const statementTally = (file: IstanbulFileCoverage, fnSpan: Span): Tally => {
 const hasStart = (loc: IstanbulLocation | undefined): loc is IstanbulLocation =>
   loc?.start?.line != null
 
+/**
+ * Istanbul records an `if` without an `else` as two locations: the consequent, and an implicit
+ * `else` whose position is empty. The hits for the path that did not take the `if` sit in that
+ * slot. An empty location has no position of its own, so it belongs to the function that holds
+ * its branch (the branch's own `loc`) and counts with its own hit count.
+ */
 const branchTally = (file: IstanbulFileCoverage, fnSpan: Span): Tally => {
   const tally: Tally = { total: 0, covered: 0 }
   for (const [id, branch] of Object.entries(file.branchMap)) {
     const counts = file.b[id] ?? []
     branch.locations.forEach((loc, i) => {
-      if (!hasStart(loc) || !within(toSpan(loc), fnSpan)) return
+      const owner = hasStart(loc) ? loc : branch.loc
+      if (!hasStart(owner) || !within(toSpan(owner), fnSpan)) return
       tally.total += 1
       if (i < counts.length && counts[i] > 0) tally.covered += 1
     })
