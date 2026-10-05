@@ -64,9 +64,45 @@ export interface EslintMessage {
   severity?: number
 }
 
+/** A source position: 1-based line, 0-based column (the Istanbul convention). */
+export type SourcePoint = readonly [number, number]
+
+/**
+ * What a complexity report is for: a function, or one of the two implicit functions ESLint
+ * counts in a class (a field initialiser, a static block).
+ */
+export type SpanOrigin = 'function' | 'field-initialiser' | 'static-block'
+
+/** One function the `complexity` rule reported, with the positions the coverage join needs. */
+export interface FunctionSpan {
+  /** The complexity message this span belongs to: its 1-based line and column, and its text. */
+  line: number
+  column: number
+  message: string
+  origin: SpanOrigin
+  /** The reported node's range. */
+  start: SourcePoint
+  end: SourcePoint
+  /**
+   * Start of the declaration the function heads: its `export`, its method, property or field
+   * (modifiers and key included), or its single-declarator variable statement. Never after `start`.
+   */
+  declStart: SourcePoint
+  /** Start of the body; null for a field initialiser and for an empty static block. */
+  bodyStart: SourcePoint | null
+  /**
+   * Where a coverage converter can start this function's entry: the declaration start, the key,
+   * the node start, the reported position, the body start, and the body's first token after any
+   * opening parentheses.
+   */
+  anchors: readonly SourcePoint[]
+}
+
 export interface EslintFileResult {
   filePath: string
   messages: EslintMessage[]
+  /** One per complexity message, from the gate's lint pass. Without them every complexity message is a problem. */
+  spans?: FunctionSpan[]
 }
 
 export interface CrapSummary {
