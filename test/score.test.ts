@@ -167,3 +167,39 @@ describe('roundTo (round half to even on the exact double)', () => {
     expect(roundTo(2 / 3, 4)).toBe(0.6667)
   })
 })
+
+describe('implicit else (a branch location with an empty position)', () => {
+  const empty = { start: {}, end: {} } as unknown as IstanbulLocation
+  const guarded = (b: number[], overrides: Partial<IstanbulFileCoverage> = {}) =>
+    makeFile({
+      statementMap: { '0': loc(11, 2, 11, 10), '1': loc(12, 2, 12, 10) },
+      s: { '0': 1, '1': 1 },
+      branchMap: { '0': { loc: loc(11, 2, 11, 10), locations: [loc(11, 2, 11, 10), empty] } },
+      b: { '0': b },
+      ...overrides,
+    })
+
+  it('counts the implicit else with its own hits inside the function holding the branch', () => {
+    expect(functionCoverage(guarded([0, 4]), '0')).toEqual({ cov: 0.5, covKind: 'min(stmt,branch)' })
+  })
+
+  it('counts an implicit else that never ran as an uncovered branch', () => {
+    expect(functionCoverage(guarded([4, 0]), '0')).toEqual({ cov: 0.5, covKind: 'min(stmt,branch)' })
+    expect(functionCoverage(guarded([4, 4]), '0')).toEqual({ cov: 1, covKind: 'min(stmt,branch)' })
+  })
+
+  it('does not count the implicit else of a branch outside the function', () => {
+    const outside = guarded([0, 4], { branchMap: { '0': { loc: loc(30, 2, 30, 10), locations: [loc(30, 2, 30, 10), empty] } } })
+    expect(functionCoverage(outside, '0')).toEqual({ cov: 1, covKind: 'stmt' })
+  })
+
+  it('skips an empty location when the branch has no loc to attribute it by', () => {
+    const noLoc = guarded([0, 4], { branchMap: { '0': { locations: [loc(11, 2, 11, 10), empty] } } })
+    expect(functionCoverage(noLoc, '0')).toEqual({ cov: 0, covKind: 'min(stmt,branch)' })
+  })
+
+  it('counts a branch whose only locations are empty by its own loc', () => {
+    const onlyEmpty = guarded([2], { branchMap: { '0': { loc: loc(11, 2, 11, 10), locations: [empty] } } })
+    expect(functionCoverage(onlyEmpty, '0')).toEqual({ cov: 1, covKind: 'min(stmt,branch)' })
+  })
+})

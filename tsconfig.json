@@ -11,5 +11,5 @@
     "noEmit": true
   },
   "include": ["src", "test"],
-  "exclude": ["test/fixtures/vitest-versions"]
+  "exclude": ["test/fixtures/vitest-versions", "test/fixtures/implicit-else"]
 }

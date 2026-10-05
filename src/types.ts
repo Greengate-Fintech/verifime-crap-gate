@@ -12,7 +12,7 @@ export interface IstanbulFileCoverage {
   s: Record<string, number>
   fnMap: Record<string, { name: string; decl?: IstanbulLocation; loc: IstanbulLocation }>
   f: Record<string, number>
-  branchMap: Record<string, { locations: IstanbulLocation[] }>
+  branchMap: Record<string, { loc?: IstanbulLocation; locations: IstanbulLocation[] }>
   b: Record<string, number[]>
 }
 

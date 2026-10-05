@@ -146,6 +146,8 @@ vite.config.ts.timestamp-*
 !test/e2e/**/coverage/
 # The synthetic package for the coverage join keeps one coverage file per Vitest version.
 !test/fixtures/vitest-versions/coverage/
+# The synthetic package for the implicit else keeps one coverage file per Vitest version.
+!test/fixtures/implicit-else/coverage/
 test/e2e/**/coverage/crap-report.json
 dist.tmp/
 
