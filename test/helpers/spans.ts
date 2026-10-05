@@ -10,7 +10,7 @@ const isComplexity = (m: EslintMessage): boolean => m.ruleId === 'complexity' &&
 
 export const pointSpan = (m: Pick<EslintMessage, 'line' | 'column' | 'message'>): FunctionSpan => {
   const at = [m.line, m.column - 1] as const
-  return { line: m.line, column: m.column, message: m.message, origin: 'function', start: at, end: at, declStart: at, bodyStart: null, anchors: [at] }
+  return { line: m.line, column: m.column, message: m.message, origin: 'function', start: at, end: at, declStart: at, headEnd: at, anchors: [at] }
 }
 
 /** The results, each with a point span for every complexity message, unless it already has spans. */

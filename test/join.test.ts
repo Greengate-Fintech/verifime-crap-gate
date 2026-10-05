@@ -2,7 +2,7 @@ import path from 'path'
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_CONFIG } from '../src/config'
 import { lintScope } from '../src/eslint'
-import { assignEntries, mergeCoverage } from '../src/join'
+import { assignEntries, mergeCoverage, unownedEntries } from '../src/join'
 import { measure } from '../src/measure'
 import type { FunctionSpan, IstanbulFileCoverage } from '../src/types'
 import { tempRoot, writeFileIn } from './helpers/sandbox'
@@ -68,6 +68,8 @@ const run = async (src: string, ...perFile: Entry[][]) => {
     joined: m.functions.map((f) => `${f.line} ${f.kind} ${f.cov}`),
     /** Each function with no entry as `line kind`, in report order. */
     unmatched: m.unmatched.map((u) => `${u.line} ${u.kind}`),
+    /** Each entry no function took, as `line:column name` (1-based). */
+    unjoined: (m.unjoined ?? []).map((e) => `${e.line}:${e.column} ${e.name}`),
   }
 }
 
@@ -210,6 +212,8 @@ describe('join: the prototype review cases', () => {
     expect(out.problems).toEqual([])
     expect(out.joined).toEqual(['1 Function 1'])
     expect(out.unmatched).toEqual(['2 Arrow function'])
+    // The stray entry is reported, never scored.
+    expect(out.unjoined).toEqual(['3:5 (anonymous_1)'])
   })
 })
 
@@ -347,7 +351,7 @@ describe('mergeCoverage', () => {
 
 describe('assignEntries', () => {
   const span = (over: Partial<FunctionSpan>): FunctionSpan => ({
-    line: 1, column: 1, message: 'm', origin: 'function', start: [1, 0], end: [3, 1], declStart: [1, 0], bodyStart: [1, 20], anchors: [[1, 0]], ...over,
+    line: 1, column: 1, message: 'm', origin: 'function', start: [1, 0], end: [3, 1], declStart: [1, 0], headEnd: [1, 20], anchors: [[1, 0]], ...over,
   })
   const coverage = (...fns: { name: string; start: { line: number; column: number | null } }[]): IstanbulFileCoverage => ({
     path: 'src/a.ts', statementMap: {}, s: {}, branchMap: {}, b: {},
@@ -371,5 +375,101 @@ describe('assignEntries', () => {
 
   it('assigns nothing without coverage', () => {
     expect(assignEntries([span({})], null)).toEqual(new Map())
+  })
+})
+
+describe('join: curried chains and other shapes (fix round 1)', () => {
+  const tri = 'export const tri = (a: number) => (b: number) => (c: number) => (a > b ? c : a)\n'
+
+  // Real Vitest 4.1 and 5.0 output: an arrow whose body is an arrow starts its entry at its first
+  // parameter, one token after the `(` that opens the inner arrow's own parameters.
+  it('three curried arrows with typed parameters each keep their own entry (Vitest 4 and 5)', async () => {
+    const out = await run(tri, [
+      { name: '(anonymous_0)', start: at(tri, 1, 'a:'), end: [1, 80], f: 1 },
+      { name: '(anonymous_1)', start: at(tri, 1, 'b:'), end: [1, 80], f: 2 },
+      { name: '(anonymous_2)', start: at(tri, 1, 'a >'), end: [1, 79], f: 0 },
+    ])
+    expect(out.problems).toEqual([])
+    expect(out.joined).toEqual(['1 Arrow function 1', '1 Arrow function 1', '1 Arrow function 0'])
+    expect(out.unmatched).toEqual([])
+  })
+
+  it('a typed middleware chain keeps one entry per arrow (Vitest 4 and 5)', async () => {
+    const src = [
+      'type Action = { type: string }',
+      'export const logger =',
+      '  (log: string[]) =>',
+      '  (next: (action: Action) => Action) =>',
+      '  (action: Action): Action => {',
+      '    log.push(action.type)',
+      '    return next(action)',
+      '  }',
+      '',
+    ].join('\n')
+    const out = await run(src, [
+      { name: '(anonymous_0)', start: at(src, 3, 'log'), end: [8, 3], f: 1 },
+      { name: '(anonymous_1)', start: at(src, 4, 'next'), end: [8, 3], f: 1 },
+      { name: '(anonymous_2)', start: at(src, 5, '{'), end: [8, 3], f: 0 },
+    ])
+    expect(out.problems).toEqual([])
+    expect(out.joined).toEqual(['3 Arrow function 1', '4 Arrow function 1', '5 Arrow function 0'])
+    expect(out.unmatched).toEqual([])
+  })
+
+  it('an empty static block has no entry and does not shift the next member (Vitest 4 and 5)', async () => {
+    const src = ['export class Boot {', '  static {}', '  start(): number {', '    return 1', '  }', '}', ''].join('\n')
+    const out = await run(src, [{ name: 'start', start: at(src, 3, '{'), end: [5, 3], f: 1 }])
+    expect(out.problems).toEqual([])
+    expect(out.joined).toEqual(['3 Method 1'])
+    expect(out.unmatched).toEqual(['2 Class static block'])
+  })
+
+  it('overload signatures report nothing and the implementation keeps its entry (Vitest 1 to 3)', async () => {
+    const src = [
+      'export function parse(input: string): number',
+      'export function parse(input: number): string',
+      'export function parse(input: string | number): number | string {',
+      "  return typeof input === 'string' ? Number(input) : String(input)",
+      '}',
+      '',
+    ].join('\n')
+    const out = await run(src, [{ name: 'parse', start: [3, 0], end: [5, 1], f: 1 }])
+    expect(out.problems).toEqual([])
+    expect(out.joined).toEqual(['3 Function 1'])
+    expect(out.unmatched).toEqual([])
+  })
+})
+
+describe('assignEntries: augmenting paths and unowned entries', () => {
+  const at3 = (line: number): FunctionSpan => ({
+    line, column: 1, message: `m${line}`, origin: 'function', start: [line, 0], end: [line, 9], declStart: [line, 0], headEnd: [line, 1], anchors: [],
+  })
+  const fns = (...starts: At[]): IstanbulFileCoverage => ({
+    path: 'src/a.ts', statementMap: {}, s: {}, branchMap: {}, b: {},
+    fnMap: Object.fromEntries(starts.map((p, i) => [String(i), { name: `e${i}`, loc: loc(p, p) }])),
+    f: Object.fromEntries(starts.map((_, i) => [String(i), 1])),
+  })
+
+  it('moves earlier entries along a chain of two steps so that every entry finds a function', () => {
+    // e0 starts on S1 and S2, e1 on S1 and S3, e2 on S2 only (spans in innermost order S1, S2, S3).
+    const s1 = { ...at3(3), anchors: [[9, 0], [9, 1]] as At[] }
+    const s2 = { ...at3(2), anchors: [[9, 0], [9, 2]] as At[] }
+    const s3 = { ...at3(1), anchors: [[9, 1]] as At[] }
+    const owned = assignEntries([s1, s2, s3], fns([9, 0], [9, 1], [9, 2]))
+    expect(owned).toEqual(new Map([[0, '0'], [2, '1'], [1, '2']]))
+  })
+
+  it('lists an entry no function took, but not a placeholder or an initialiser entry', () => {
+    const file: IstanbulFileCoverage = {
+      ...fns([1, 0], [5, 0], [6, 0], [7, 0]),
+      fnMap: {
+        '0': { name: 'own', loc: loc([1, 0], [1, 0]) },
+        '1': { name: 'stray', loc: loc([5, 0], [5, 0]) },
+        '2': { name: '(empty-report)', loc: loc([6, 0], [6, 0]) },
+        '3': { name: '<instance_members_initializer>', loc: loc([7, 0], [7, 0]) },
+      },
+    }
+    const spans = [{ ...at3(1), anchors: [[1, 0]] as At[] }]
+    expect(unownedEntries(file, assignEntries(spans, file)).map((e) => e.name)).toEqual(['stray'])
   })
 })

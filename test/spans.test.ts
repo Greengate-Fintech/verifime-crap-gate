@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { DEFAULT_CONFIG } from '../src/config'
 import type { CrapConfig } from '../src/config'
 import { lintScope } from '../src/eslint'
+import { spanOfReport } from '../src/spans'
 import type { EslintFileResult } from '../src/types'
 import { readFixture, tempRoot, writeFileIn } from './helpers/sandbox'
 
@@ -38,6 +39,11 @@ describe('function spans from the lint pass', () => {
       }
       expect(results.flatMap((r) => r.spans ?? [])).not.toHaveLength(0)
     }
+  })
+
+  it('fails loudly on a report without a node, rather than lose the function', () => {
+    const descriptor = { loc: { line: 1, column: 0 }, messageId: 'complex', data: { name: 'Function', complexity: 1, max: 0 } }
+    expect(() => spanOfReport(descriptor as never, {} as never)).toThrow('ESLint complexity reported without a node')
   })
 
   it('adds no message of its own to the lint results', async () => {

@@ -2,7 +2,7 @@ import { readFileSync, realpathSync } from 'fs'
 import path from 'path'
 import { DEFAULT_CONFIG } from './config'
 import type { CrapConfig } from './config'
-import { assignEntries, mergeCoverage, spanPairer } from './join'
+import { assignEntries, mergeCoverage, spanPairer, unownedEntries } from './join'
 import { crapScore, functionCoverage, rawFunctionCoverage } from './score'
 import type {
   EslintFileResult,
@@ -297,6 +297,9 @@ const measureFile = (
 ): void => {
   const entry = mergeCoverage(entries)
   const owned = assignEntries(input.spans, entry)
+  for (const e of unownedEntries(entry, owned)) {
+    out.unjoined?.push({ file: input.rel, line: e.start[0], column: e.start[1] + 1, name: e.name })
+  }
   const pair = spanPairer(input.spans)
   const lineAt = lazyLineReader(readSource, input.abs)
   for (const message of input.messages) {
@@ -351,7 +354,7 @@ export const measure = (
   const rules = compileScope(config)
   const files = inScopeFiles(eslint, repoRoot, rules)
   const byFile = groupCoverageByFile(coverage, repoRoot, new Set(files.map((f) => f.rel)), rules.anchors)
-  const out: Measurement = { functions: [], unmatched: [], problems: uncoveredByEslint(byFile, files, rules) }
+  const out: Measurement = { functions: [], unmatched: [], problems: uncoveredByEslint(byFile, files, rules), unjoined: [] }
   for (const file of files) measureFile(file, byFile.get(file.rel) ?? [], readSource, out)
   return out
 }

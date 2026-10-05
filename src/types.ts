@@ -49,10 +49,21 @@ export interface MeasureProblem {
   message: string
 }
 
+/** A coverage entry the join gave to no function: informational, it never fails a run. */
+export interface UnjoinedEntry {
+  file: string
+  /** The entry's start: 1-based line, 1-based column. */
+  line: number
+  column: number
+  name: string
+}
+
 export interface Measurement {
   functions: FunctionScore[]
   unmatched: UnmatchedFunction[]
   problems: MeasureProblem[]
+  /** Coverage entries joined to no function. Absent when the measurement did not record them. */
+  unjoined?: UnjoinedEntry[]
 }
 
 export interface EslintMessage {
@@ -85,15 +96,19 @@ export interface FunctionSpan {
   end: SourcePoint
   /**
    * Start of the declaration the function heads: its `export`, its method, property or field
-   * (modifiers and key included), or its single-declarator variable statement. Never after `start`.
+   * (modifiers and key included), or its variable statement when that declares only this one
+   * (the declarator itself when it declares several). Never after `start`.
    */
   declStart: SourcePoint
-  /** Start of the body; null for a field initialiser and for an empty static block. */
-  bodyStart: SourcePoint | null
+  /**
+   * End of the head (from `declStart`): the body's first token after any parentheses that open
+   * it, or the body's start when the body is itself a function. The node end for a field
+   * initialiser and an empty static block, which have no body.
+   */
+  headEnd: SourcePoint
   /**
    * Where a coverage converter can start this function's entry: the declaration start, the key,
-   * the node start, the reported position, the body start, and the body's first token after any
-   * opening parentheses.
+   * the node start, the reported position and the body start.
    */
   anchors: readonly SourcePoint[]
 }

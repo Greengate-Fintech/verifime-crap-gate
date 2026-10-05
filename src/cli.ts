@@ -105,6 +105,10 @@ const failures = (m: Measurement, stale: StaleUnmatched[]): string[] => {
   return [...none, ...problems, ...unmatched, ...staleLines]
 }
 
+/** Informational: a coverage entry no function took. It never changes the exit code. */
+const unjoinedLines = (m: Measurement): string[] =>
+  (m.unjoined ?? []).map((e) => `Coverage entry joined to no function: ${e.file}:${e.line}:${e.column} ${e.name}`)
+
 const summaryLine = (s: CrapSummary): string =>
   `CRAP measure: functions=${s.functions} over5=${s.over5} sumOver5=${s.sumOver5.toFixed(1)} unmatched=${s.unmatched}`
 
@@ -160,7 +164,7 @@ const resolveUnmatched = (m: Measurement, opts: MeasureOptions): Outcome => {
   const list = opts.acceptUnmatched ? groupUnmatched(m.unmatched) : readUnmatchedList(opts.unmatchedListPath)
   const { listed, failing, stale } = splitUnmatched(m.unmatched, list)
   const functions = [...m.functions, ...listed.map(scoreListedUnmatched)]
-  return { measurement: { functions, unmatched: failing, problems: m.problems }, listed, stale, accepted: opts.acceptUnmatched }
+  return { measurement: { functions, unmatched: failing, problems: m.problems, unjoined: m.unjoined }, listed, stale, accepted: opts.acceptUnmatched }
 }
 
 const eslintInput = (opts: MeasureOptions): EslintFileResult[] => {
@@ -188,6 +192,7 @@ export const runMeasure = (opts: MeasureOptions, io: Io): number => {
     // Failure detail first so the summary line is the last thing printed, as in a passing run.
     const problems = failures(outcome.measurement, outcome.stale)
     problems.forEach((p) => io.error(p))
+    unjoinedLines(outcome.measurement).forEach((line) => io.log(line))
     io.log(summaryLine(summary))
     return problems.length === 0 ? 0 : 1
   } catch (e) {

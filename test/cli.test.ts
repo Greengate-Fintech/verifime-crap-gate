@@ -197,6 +197,26 @@ describe('runMeasure', () => {
     expect(report.unmatched).toEqual([])
     expect(logs).toEqual(['CRAP measure: functions=7 over5=0 sumOver5=0.0 unmatched=0'])
   })
+
+  it('prints a coverage entry joined to no function before the summary, and still returns 0', () => {
+    writeInputs(box)
+    const coverage = JSON.parse(readFileSync(box.opts.coveragePaths[0], 'utf8'))
+    const [file] = Object.values(coverage) as { fnMap: Record<string, unknown>; f: Record<string, number> }[]
+    const at = { start: { line: 40, column: 0 }, end: { line: 40, column: 9 } }
+    file.fnMap['99'] = { name: 'stray', decl: at, loc: at }
+    file.f['99'] = 1
+    writeFileSync(box.opts.coveragePaths[0], JSON.stringify(coverage))
+    const { io, logs, errors } = makeIo()
+    expect(runMeasure(box.opts, io)).toBe(0)
+    expect(errors).toEqual([])
+    expect(logs).toEqual([
+      'Coverage entry joined to no function: src/sample.ts:40:1 stray',
+      'CRAP measure: functions=7 over5=0 sumOver5=0.0 unmatched=0',
+    ])
+    expect(Object.keys(JSON.parse(readFileSync(box.opts.outPath, 'utf8')))).toEqual([
+      'summary', 'functions', 'unmatched', 'listedUnmatched', 'staleUnmatched', 'acceptedUnmatched',
+    ])
+  })
 })
 
 describe('runMeasure: several coverage files', () => {

@@ -9,8 +9,9 @@ import type { FunctionSpan, SourcePoint, SpanOrigin } from './types'
 //
 // It reads the rule from `eslint/use-at-your-own-risk`, which ESLint may change in any release,
 // and it relies on `complexity` reporting with `node`, `loc`, `messageId` and `data`. A test pins
-// the bundled ESLint version (test/spans.test.ts). If a change breaks the pairing, every
-// complexity message becomes a measure problem: it fails closed.
+// the bundled ESLint version (test/spans.test.ts). If a change breaks the pairing, each
+// complexity message left without a span becomes a measure problem, and a report without a node
+// throws (spanOfReport): either way it fails closed.
 
 type Loc = { line: number; column: number }
 
@@ -80,20 +81,26 @@ const bodyOf = (node: AstNode, origin: SpanOrigin): AstNode | null => {
   return Array.isArray(node.body) ? ((node.body[0] as AstNode | undefined) ?? null) : (node.body as AstNode)
 }
 
+const FUNCTION_NODES = new Set(['ArrowFunctionExpression', 'FunctionExpression'])
+
 /**
- * The first token of a body after any opening parentheses. In `(e) => (e as Error).message` the
- * body node starts at the `(`, but a converter that drops parentheses starts the entry at `e`.
+ * Where the head ends (FunctionSpan.headEnd): the body's first token after any parentheses that
+ * open it. In `(e) => (e as Error).message` the body node starts at the `(`, but a converter that
+ * drops parentheses starts the entry at `e`. A body that is itself a function ends the head at
+ * that function's start: its first `(` opens its own parameters, and what follows is its head.
  */
-const unparenthesisedStart = (body: AstNode, sourceCode: SourceCode): Loc => {
+const headEndOf = (node: AstNode, body: AstNode | null, sourceCode: SourceCode): Loc => {
+  if (!body) return node.loc.end
+  if (FUNCTION_NODES.has(body.type)) return body.loc.start
   let token = sourceCode.getFirstToken(body as unknown as Rule.Node) as AST.Token
   while (token.value === '(') token = sourceCode.getTokenAfter(token) as AST.Token
   return token.loc.start
 }
 
-const anchorsOf = (node: AstNode, decl: AstNode, head: Loc, body: AstNode | null, sourceCode: SourceCode): SourcePoint[] => {
+const anchorsOf = (node: AstNode, decl: AstNode, head: Loc, body: AstNode | null): SourcePoint[] => {
   const key = keyOf(decl)
   const fromKey = key ? [key.loc.start] : []
-  const fromBody = body ? [body.loc.start, unparenthesisedStart(body, sourceCode)] : []
+  const fromBody = body ? [body.loc.start] : []
   return [decl.loc.start, ...fromKey, node.loc.start, head, ...fromBody].map(point)
 }
 
@@ -107,7 +114,13 @@ const reportedAt = (descriptor: Rule.ReportDescriptor): Loc => {
   return 'start' in loc ? loc.start : loc
 }
 
-const spanOf = (descriptor: Rule.ReportDescriptor, node: AstNode, sourceCode: SourceCode): FunctionSpan => {
+/**
+ * The span for one report of the wrapped rule. A report without a node breaks an invariant of
+ * `complexity` (it always reports on the function node): it throws rather than lose the function.
+ */
+export const spanOfReport = (descriptor: Rule.ReportDescriptor, sourceCode: SourceCode): FunctionSpan => {
+  const node = (descriptor as { node?: unknown }).node as AstNode | undefined
+  if (!node) throw new Error('ESLint complexity reported without a node: the function span cannot be recorded')
   const data = (descriptor.data ?? {}) as Record<string, unknown>
   const origin = ORIGINS[String(data.name)] ?? 'function'
   const head = reportedAt(descriptor)
@@ -121,8 +134,8 @@ const spanOf = (descriptor: Rule.ReportDescriptor, node: AstNode, sourceCode: So
     start: point(node.loc.start),
     end: point(node.loc.end),
     declStart: point(decl.loc.start),
-    bodyStart: body ? point(body.loc.start) : null,
-    anchors: anchorsOf(node, decl, head, body, sourceCode),
+    headEnd: point(headEndOf(node, body, sourceCode)),
+    anchors: anchorsOf(node, decl, head, body),
   }
 }
 
@@ -133,10 +146,7 @@ const spanOf = (descriptor: Rule.ReportDescriptor, node: AstNode, sourceCode: So
 export const makeSpanRule = (record: (filename: string, span: FunctionSpan) => void): Rule.RuleModule => ({
   meta: complexityRule.meta,
   create(context) {
-    const report = (descriptor: Rule.ReportDescriptor): void => {
-      const node = (descriptor as { node?: unknown }).node as AstNode | undefined
-      if (node) record(context.filename, spanOf(descriptor, node, context.sourceCode))
-    }
+    const report = (descriptor: Rule.ReportDescriptor): void => record(context.filename, spanOfReport(descriptor, context.sourceCode))
     return complexityRule.create(Object.create(context, { report: { value: report } }) as Rule.RuleContext)
   },
 })

@@ -4,14 +4,19 @@ import type { EslintMessage, FunctionSpan, IstanbulFileCoverage, IstanbulLocatio
 // entries. An entry belongs to the innermost function whose declaration span, from its
 // declaration start to its node end, contains the entry's start:
 //
-// 1. Exact: an entry that starts on one of a function's known start points (declaration, key,
-//    node, report, body) is paired first, innermost function first, conflicts resolved with
-//    augmenting paths in fnMap order. Coverage converters start entries on these points: Vitest 1
-//    to 3 at the head (`export`, `async`, the key, the arrow head), Vitest 4 and 5 at the body.
+// 1. Exact: an entry that starts on one of a function's five known start points (its
+//    declaration start, its key, its node start, its reported position, its body start) is
+//    paired first, innermost function first, conflicts resolved with augmenting paths in fnMap
+//    order. Coverage converters start entries on these points: Vitest 1 to 3 at the head
+//    (`export`, `async`, the key, the arrow head), Vitest 4 and 5 at the body.
 // 2. Fallback: an entry that starts on no known point goes to the innermost free function whose
-//    head (declaration start to body start) contains it. A body is never searched, so a stray
-//    entry inside a callback is not given to that callback.
+//    head (FunctionSpan.declStart to FunctionSpan.headEnd) contains it. The head ends at the
+//    body's first token after any opening parentheses, so `(e) => (e as Error).message` reaches
+//    an entry at `e`, and at an inner function's start, so it never reaches into that function's
+//    parameters. A body is never searched, so a stray entry inside a callback is not given to it.
 //
+// An entry that neither pass gives to a function is left unowned (unownedEntries): the measure
+// lists it as a notice and never scores it.
 // A function owns at most one entry. A function left without one is unmatched: it never borrows.
 // Only a converter's initialiser entry (`<instance_members_initializer>`, `<static_initializer>`)
 // can belong to a class field initialiser or static block, and never to a real function.
@@ -91,7 +96,7 @@ export const mergeCoverage = (files: readonly IstanbulFileCoverage[]): IstanbulF
 // Assigning entries to spans
 // ---------------------------------------------------------------------------------------
 
-interface EntryStart {
+export interface EntryStart {
   id: string
   name: string
   start: SourcePoint
@@ -107,7 +112,7 @@ const accepts = (span: FunctionSpan, entry: EntryStart): boolean =>
 const startsOnAnchor = (span: FunctionSpan, p: SourcePoint): boolean => span.anchors.some((a) => compare(a, p) === 0)
 
 const inHead = (span: FunctionSpan, p: SourcePoint): boolean =>
-  compare(span.declStart, p) <= 0 && compare(p, span.bodyStart ?? span.end) <= 0
+  compare(span.declStart, p) <= 0 && compare(p, span.headEnd) <= 0
 
 const entryStarts = (file: IstanbulFileCoverage | null): EntryStart[] =>
   Object.entries(file?.fnMap ?? {})
@@ -143,6 +148,16 @@ export const assignEntries = (spans: readonly FunctionSpan[], file: IstanbulFile
     if (free !== undefined) owner.set(free, entry.id)
   }
   return owner
+}
+
+/**
+ * Entries no function owns, in fnMap order. Left out: unloaded-file placeholders, and initialiser
+ * entries, which a converter also emits for code ESLint reports no function for (a constructor's
+ * parameter properties). What is left is a function entry that started in no function head.
+ */
+export const unownedEntries = (file: IstanbulFileCoverage | null, owned: ReadonlyMap<number, string>): EntryStart[] => {
+  const taken = new Set(owned.values())
+  return entryStarts(file).filter((e) => !taken.has(e.id) && !INITIALISER_ENTRY.test(e.name))
 }
 
 // ---------------------------------------------------------------------------------------
