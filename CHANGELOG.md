@@ -19,7 +19,7 @@ Score impact: changing
 ### Added
 
 - A new measure problem, `Complexity message with no function span: was the file linted by the gate?`, for a complexity message that cannot be joined. It fails the run with exit 1.
-- A new notice, `Coverage entry joined to no function: <file>:<line>:<column> <name>`, printed before the summary line for each coverage entry no function takes. It does not change the exit code.
+- A new notice, `Coverage entry joined to no function: <file>:<line>:<column> <name>`, printed before the summary line for each coverage entry no function takes. Entries of TypeScript enums and namespaces are not listed. It does not change the exit code.
 
 ### Known limits
 
