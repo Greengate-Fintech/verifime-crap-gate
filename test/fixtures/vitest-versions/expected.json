@@ -415,6 +415,84 @@
       }
     },
     {
+      "file": "src/curried.ts",
+      "line": 5,
+      "column": 32,
+      "kind": "Arrow function",
+      "label": "curried arrow, three levels: outer",
+      "entry": {
+        "1.6.1": "tri@5:19",
+        "3.2.4": "tri@5:19",
+        "4.1.11": "(anonymous_4)@5:20",
+        "5.0.3": "(anonymous_4)@5:20"
+      }
+    },
+    {
+      "file": "src/curried.ts",
+      "line": 5,
+      "column": 47,
+      "kind": "Arrow function",
+      "label": "curried arrow, three levels: middle",
+      "entry": {
+        "1.6.1": null,
+        "3.2.4": null,
+        "4.1.11": "(anonymous_5)@5:35",
+        "5.0.3": "(anonymous_5)@5:35"
+      }
+    },
+    {
+      "file": "src/curried.ts",
+      "line": 5,
+      "column": 62,
+      "kind": "Arrow function",
+      "label": "curried arrow, three levels: inner",
+      "entry": {
+        "1.6.1": null,
+        "3.2.4": null,
+        "4.1.11": "(anonymous_6)@5:65",
+        "5.0.3": "(anonymous_6)@5:65"
+      }
+    },
+    {
+      "file": "src/curried.ts",
+      "line": 15,
+      "column": 18,
+      "kind": "Arrow function",
+      "label": "typed middleware chain: outer",
+      "entry": {
+        "1.6.1": "logger@15:2",
+        "3.2.4": "logger@15:2",
+        "4.1.11": "(anonymous_7)@15:3",
+        "5.0.3": "(anonymous_7)@15:3"
+      }
+    },
+    {
+      "file": "src/curried.ts",
+      "line": 16,
+      "column": 38,
+      "kind": "Arrow function",
+      "label": "typed middleware chain: middle",
+      "entry": {
+        "1.6.1": null,
+        "3.2.4": null,
+        "4.1.11": "(anonymous_8)@16:3",
+        "5.0.3": "(anonymous_8)@16:3"
+      }
+    },
+    {
+      "file": "src/curried.ts",
+      "line": 17,
+      "column": 28,
+      "kind": "Arrow function",
+      "label": "typed middleware chain: inner",
+      "entry": {
+        "1.6.1": null,
+        "3.2.4": null,
+        "4.1.11": "(anonymous_9)@17:30",
+        "5.0.3": "(anonymous_9)@17:30"
+      }
+    },
+    {
       "file": "src/jsx.ts",
       "line": 7,
       "column": 105,
