@@ -95,7 +95,7 @@ Known limit: when one source file is covered both by a package on Vitest 1 to 3 
 
 ### How a function's coverage is computed
 
-A function's coverage is the lower of its statement coverage and its branch coverage (`min(stmt,branch)`), and CRAP uses that value. Statements and branch locations count for the function that contains them. An `if` without an `else` has two branch locations: the consequent, and an implicit `else` that Vitest 4 and 5 record with an empty position. The implicit `else` counts for the function that contains its `if`, with its own hit count, so a function that ran down the default path of a guard does not score coverage 0.
+A function's coverage is the lower of its statement coverage and its branch coverage (`min(stmt,branch)`), and CRAP uses that value. Statements and branch locations count for the function that contains them. An `if` without an `else` has two branch locations: the consequent, and an implicit `else` that Vitest 4 and 5 record with an empty position. The implicit `else` counts for the function that contains its `if`, with its own hit count, so a function that ran down the default path of a guard does not score coverage 0. The same rule can raise a score: an implicit `else` that never ran (a guard that always fired) counts as an uncovered branch. A row whose score rises needs `baseline --allow-growth` on re-baseline.
 
 Known limit: a `?? []` (or another `??`) whose two branch locations both show no hits although the statement ran was seen in a real project and could not be reproduced on a synthetic package under Vitest 4.1 and 5.0. It is not the implicit `else` (a `??` has two located branches), so the gate does not correct it. Such a function can read lower coverage than it earned.
 
@@ -271,7 +271,7 @@ The package's `bin` is `crap-gate`, which is `dist/cli.cjs`.
 
 `dist/` is generated and is not committed on `main`. `npm run build` produces it, with esbuild, from `src/`. The release workflow commits it on the release commit that a release tag points to (see Releasing). The bundle has three files:
 
-- `dist/cli.cjs` bundles the gate, ESLint, typescript-eslint and TypeScript. It has no static `require` of a module that is not a Node built-in. ESLint and TypeScript keep dynamic loading sites (`require`, `import()`, `createRequire`) in the bundle, and the gate's options never reach them: it does no config lookup and loads no plugins. So it never resolves a module from the project it measures. A project with a different TypeScript, its own ESLint or its own ESLint config gets the same result.
+- `dist/cli.cjs` bundles the gate, ESLint, typescript-eslint and TypeScript. It has no static `require` of a module that is not a Node built-in. ESLint and TypeScript keep dynamic loading sites (`require`, `import()`, `createRequire`) in the bundle, and the gate's options never reach them: it does no config lookup and loads no plugin from the project (the lint pass registers only the gate's own companion rules). So it never resolves a module from the project it measures. A project with a different TypeScript, its own ESLint or its own ESLint config gets the same result.
 - `dist/action.cjs` is the action entry. It requires `./cli.cjs`, so the toolchain is bundled once.
 - `dist/THIRD-PARTY-LICENSES.txt` lists every package bundled into the CLI, with its version and licence text.
 
