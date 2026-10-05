@@ -3,6 +3,8 @@ import os from 'os'
 import path from 'path'
 import { runBaseline, runCheck, runMeasure } from '../../src/cli'
 import type { MeasureOptions } from '../../src/cli'
+import type { EslintFileResult } from '../../src/types'
+import { pointSpan, withPointSpans } from './spans'
 
 // Runs the whole gate (measure, accept, baseline, measure, check) over the copied fixtures plus
 // one synthetic offender and one synthetic unmatched function, and records every output.
@@ -16,12 +18,15 @@ export interface Observed {
 
 const readFixture = (name: string): string => readFileSync(path.join(FIXTURES, name), 'utf8')
 
-const hotEslint = (): unknown => ({
+const HOT = { ruleId: 'complexity', message: "Function 'hot' has a complexity of 12. Maximum allowed is 0.", line: 3, column: 8 }
+const LOST = { ruleId: 'complexity', message: "Function 'lost' has a complexity of 9. Maximum allowed is 0.", line: 90, column: 1 }
+
+// `hot` is an exported function whose coverage entry starts at its `export` (3:0), as Vitest 1 to
+// 3 start it; `lost` has no entry.
+const hotEslint = (): EslintFileResult => ({
   filePath: `${FAKE_ROOT}/src/hot.ts`,
-  messages: [
-    { ruleId: 'complexity', message: "Function 'hot' has a complexity of 12. Maximum allowed is 0.", line: 3, column: 8 },
-    { ruleId: 'complexity', message: "Function 'lost' has a complexity of 9. Maximum allowed is 0.", line: 90, column: 1 },
-  ],
+  messages: [HOT, LOST],
+  spans: [{ ...pointSpan(HOT), declStart: [3, 0], end: [9, 1], anchors: [[3, 0], [3, 7]] }, pointSpan(LOST)],
 })
 
 const hotCoverage = (): unknown => {
@@ -41,7 +46,7 @@ const CDK_FILE = `${FAKE_ROOT}/cdk/lib/stack.ts`
 // A coverage key written on another machine: it joins the measured file on the `cdk` anchor.
 const CDK_FOREIGN_KEY = '/home/runner/work/other/other/cdk/lib/stack.ts'
 
-const cdkEslint = (): unknown => ({
+const cdkEslint = (): EslintFileResult => ({
   filePath: CDK_FILE,
   messages: [{ ruleId: 'complexity', message: "Method 'build' has a complexity of 10. Maximum allowed is 0.", line: 4, column: 3 }],
 })
@@ -60,8 +65,8 @@ const cdkCoverage = (): unknown => {
 }
 
 const eslintText = (root: string): string => {
-  const base = JSON.parse(readFixture('eslint.json')) as unknown[]
-  return JSON.stringify([...base, hotEslint(), cdkEslint()], null, 2).split(FAKE_ROOT).join(root)
+  const base = JSON.parse(readFixture('eslint.json')) as EslintFileResult[]
+  return JSON.stringify(withPointSpans([...base, hotEslint(), cdkEslint()]), null, 2).split(FAKE_ROOT).join(root)
 }
 
 const coverageText = (root: string): string => {

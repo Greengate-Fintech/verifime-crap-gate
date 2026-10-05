@@ -6,6 +6,7 @@ import { escapeData, escapeProperty, isMoveSuspect, parseArgs, runBaseline, runB
 import type { MeasureOptions } from '../src/cli'
 import type { Violation } from '../src/ratchet'
 import type { FunctionScore } from '../src/types'
+import { withPointSpansText } from './helpers/spans'
 
 const FIXTURES = path.join(__dirname, 'fixtures')
 const FAKE_ROOT = '/fake/repo'
@@ -37,7 +38,7 @@ const makeSandbox = (): Sandbox => {
 }
 
 const writeInputs = (box: Sandbox, eslintText = readFixture('eslint.json')): void => {
-  writeFileSync(box.opts.eslintPath, withRoot(eslintText, box.root))
+  writeFileSync(box.opts.eslintPath, withRoot(withPointSpansText(eslintText), box.root))
   writeFileSync(box.opts.coveragePaths[0], withRoot(readFixture('coverage-final.json'), box.root))
 }
 
@@ -222,7 +223,7 @@ describe('runMeasure: several coverage files', () => {
     eslint.push({ filePath: `${box.root}/cdk/lib/stack.ts`, messages: [CDK_MESSAGE] })
     mkdirSync(path.join(box.root, 'cdk/lib'), { recursive: true })
     mkdirSync(path.join(box.root, 'cdk/coverage'), { recursive: true })
-    writeFileSync(box.opts.eslintPath, JSON.stringify(eslint))
+    writeFileSync(box.opts.eslintPath, withPointSpansText(JSON.stringify(eslint)))
     const cdkCoveragePath = path.join(box.root, 'cdk/coverage/coverage-final.json')
     writeFileSync(cdkCoveragePath, JSON.stringify(cdkCoverage(box.root)))
     return cdkCoveragePath

@@ -2,12 +2,18 @@ import { mkdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync, writeF
 import os from 'os'
 import path from 'path'
 import { describe, it, expect } from 'vitest'
-import { isInScope, measure, toRepoRelative } from '../src/measure'
+import { isInScope, measure as measureWithSpans, toRepoRelative } from '../src/measure'
 import type {
   EslintFileResult,
   IstanbulFileCoverage,
   IstanbulLocation,
 } from '../src/types'
+import { withPointSpans } from './helpers/spans'
+
+// These hand-written messages get a point span each (see helpers/spans.ts): an entry joins its
+// function only when it starts exactly at the message. The join itself is tested in join.test.ts.
+const measure = (eslint: EslintFileResult[], ...rest: Parameters<typeof measureWithSpans> extends [unknown, ...infer R] ? R : never) =>
+  measureWithSpans(withPointSpans(eslint), ...rest)
 
 const FAKE_ROOT = '/fake/repo'
 const SAMPLE_REL = 'src/sample.ts'
@@ -239,25 +245,44 @@ describe('measure: unmatched functions', () => {
   })
 })
 
-describe('measure: fnMap matching fallbacks', () => {
-  it('matches a function starting within 8 lines after the message (body)', () => {
+describe('measure: no borrowed entries', () => {
+  it('leaves a function unmatched when the only free entry starts after it', () => {
     const eslint = sampleMessages(
       msg('Arrow function has a complexity of 1. Maximum allowed is 0.', 29, 1),
     )
     const result = measure(eslint, coverageFixture(), FAKE_ROOT, readSource)
-    expect(result.unmatched).toEqual([])
-    expect(result.functions[0]).toMatchObject({ cc: 1, cov: 1, covKind: 'stmt', crap: 1 })
+    expect(result.functions).toEqual([])
+    expect(result.unmatched.map((u) => [u.line, u.kind])).toEqual([[29, 'Arrow function']])
   })
 
-  it('matches the smallest enclosing span when nothing starts at or after the message (contain)', () => {
+  it('leaves a function unmatched when the only entry encloses it', () => {
     const eslint = sampleMessages(
       msg('Function has a complexity of 3. Maximum allowed is 0.', 10, 1),
     )
     const coverage = oneFnCoverage('outer', loc(1, 0, 20, 1))
     const result = measure(eslint, coverage, FAKE_ROOT, readSource)
-    expect(result.functions).toEqual([
-      { file: SAMPLE_REL, symbol: 'outer', kind: 'Function', line: 10, cc: 3, cov: 1, covKind: 'called', crap: 3 },
+    expect(result.functions).toEqual([])
+    expect(result.unmatched.map((u) => u.line)).toEqual([10])
+  })
+})
+
+describe('measure: function spans', () => {
+  it('fails closed on a complexity message the lint pass recorded no span for', () => {
+    const eslint = sampleMessages(msg("Function 'a' has a complexity of 2. Maximum allowed is 0.", 6, 8))
+    const result = measureWithSpans(eslint, coverageFixture(), FAKE_ROOT, readSource)
+    expect(result.functions).toEqual([])
+    expect(result.unmatched).toEqual([])
+    expect(result.problems).toEqual([
+      { file: SAMPLE_REL, line: 6, message: 'Complexity message with no function span: was the file linted by the gate?' },
     ])
+  })
+
+  it('fails closed on a complexity message whose span was already paired', () => {
+    const message = msg("Function 'a' has a complexity of 2. Maximum allowed is 0.", 6, 8)
+    const [withOne] = withPointSpans(sampleMessages(message))
+    const result = measureWithSpans([{ ...withOne, messages: [message, message] }], coverageFixture(), FAKE_ROOT, readSource)
+    expect(result.functions.map((f) => f.line)).toEqual([6])
+    expect(result.problems.map((p) => p.line)).toEqual([6])
   })
 })
 
