@@ -42,6 +42,11 @@ Functions the coverage provider gives no entry for. Each is scored at coverage 0
 
 The list only shrinks. An unmatched function that is not listed fails the measure, and a listed entry that now matches is stale.
 
+A function is unmatched only when the coverage has no entry of its own for it (see "How a function is joined to its coverage"). It never takes another function's entry. With Vitest's v8 coverage, the usual cases are:
+
+- class field initialisers and class static blocks, which ESLint counts as functions;
+- on Vitest 1 to 3 only: anonymous callbacks, functions inside a function that never ran, and every function of a file no test loads.
+
 ### Report
 
 `coverage/crap-report.json` is written by `measure`. Its fields are `summary`, `functions`, `unmatched`, `listedUnmatched`, `staleUnmatched` and `acceptedUnmatched`.
@@ -71,6 +76,18 @@ The gate runs ESLint through its Node API. It does not read your ESLint config a
 - ignored: files under `node_modules`, `dist`, `coverage` and `cdk.out` folders, and `*.d.ts` files.
 
 A directory of the default scope that does not exist is skipped. A directory in a `scope` that your config sets must exist: a missing one, or one that is a file, exits 1 with `Invalid <config file>: key "scope" entry "<dir>" is not an existing directory`. When no scope directory exists, nothing is measured and the run exits 1 with `No functions were measured`.
+
+### How a function is joined to its coverage
+
+The lint pass also records where each reported function is declared: where its declaration starts (its `export`, its modifiers and method key, or its `const` statement), where its body starts, and where its node ends. A coverage entry belongs to the innermost function whose declaration contains the start of the entry:
+
+- An entry that starts exactly where the function, its declaration, its key or its body starts is paired first. Vitest 1 to 3 start an entry at the function head, Vitest 4 and 5 at its body, so both are found.
+- Any other entry goes to the innermost function still without one, but only if it starts in that function's head (its declaration start to its body start). An entry inside a body is never given to the function around it.
+- Each function owns at most one entry. Only a converter's initialiser entry (`<instance_members_initializer>`, `<static_initializer>`) can belong to a class field initialiser or a static block.
+
+So the join does not depend on how long a signature is, on the Vitest version or on the order of the coverage files. When two coverage files cover the same source file, entries with an identical span are merged and their hit counts added; entries with different spans stay separate.
+
+A complexity message the lint pass recorded no span for cannot be joined: it is a problem, `Complexity message with no function span: was the file linted by the gate?`, and the run exits 1.
 
 ## Commands
 

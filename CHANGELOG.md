@@ -4,6 +4,21 @@ All notable changes are recorded here, in the Keep a Changelog style. Each relea
 
 ## [Unreleased]
 
+Score impact: changing
+
+### Fixed
+
+- The coverage join now gives each function its own coverage entry (#13). The join no longer pairs by position (same line, then up to 8 lines below, then the smallest enclosing entry). The lint pass records each function's declaration span, and an entry belongs to the innermost function whose declaration contains its start. This fixes four cases where a function took a neighbour's entry, and the neighbour was then scored as unmatched at coverage 0:
+  - a function with no entry of its own (an anonymous callback on Vitest 1 to 3) took the next function's entry;
+  - a function whose signature runs more than 8 lines was unmatched;
+  - a class field initialiser took the next member's entry, which shifted every later member;
+  - a source file in two coverage files: one copy of an entry was used and the other left for another function to take. Entries with an identical span are now merged.
+- Scores, `crap/baseline.tsv` and `crap/unmatched.tsv` rows can change. Run `npm run crap:baseline` once after upgrading, with `--allow-growth` if a function that was wrongly matched is now unmatched, and say why in the pull request.
+
+### Added
+
+- A new measure problem, `Complexity message with no function span: was the file linted by the gate?`, for a complexity message that cannot be joined. It fails the run with exit 1.
+
 ## [1.0.1] - 2026-10-04
 
 Score impact: neutral
