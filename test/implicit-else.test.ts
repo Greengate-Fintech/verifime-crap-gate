@@ -7,10 +7,15 @@ import type { IstanbulFileCoverage } from '../src/types'
 // Functions that ran down their default path only, covered by real Vitest 1.6, 3.2, 4.1 and 5.0
 // runs of test/fixtures/implicit-else (guards.ts). Vitest 4 and 5 record an `if` without an `else`
 // as two branch locations, the second with an empty position (the implicit else) and the hits for
-// the path that ran. Vitest 1 to 3 record no such location, so their scores must not change.
+// the path that skips the `if`. Vitest 1.6 and 3.2 record no such location, so their scores must not change.
 
 const PACKAGE = path.join(__dirname, 'fixtures', 'implicit-else')
-const VERSIONS = ['1.6.1', '3.2.4', '4.1.11', '5.0.3'] as const
+const FUNCTIONS = ['retryDelay', 'describeLevel', 'listOrEmpty', 'countOrEmpty', 'fallbackLabel', 'signOf', 'guardedConstructorLike']
+// Scores on Vitest 1.6 and 3.2, which this change must leave as they were.
+const OLD_VERSION_COVERAGE = {
+  '1.6.1': { retryDelay: 0.5, describeLevel: 0.3333, listOrEmpty: 1, countOrEmpty: 1, fallbackLabel: 0.5, signOf: 0.5, guardedConstructorLike: 0.25 },
+  '3.2.4': { retryDelay: 0.5, describeLevel: 0.3333, listOrEmpty: 1, countOrEmpty: 1, fallbackLabel: 0.5, signOf: 0.5, guardedConstructorLike: 0.25 },
+}
 const IMPLICIT_ELSE_VERSIONS = ['4.1.11', '5.0.3'] as const
 
 const coverageFor = (version: string): IstanbulFileCoverage =>
@@ -40,7 +45,7 @@ describe('an if without an else counts its implicit else as a branch of the func
     expect(coverageOf(coverageFor(version), 'guardedConstructorLike')).toEqual({ cov: 0.5, covKind: 'min(stmt,branch)' })
   })
 
-  it.each(IMPLICIT_ELSE_VERSIONS)('Vitest %s: ?? and ?: keep their two located branches', (version) => {
+  it.each(IMPLICIT_ELSE_VERSIONS)('Vitest %s: ??, || and ?: keep their two located branches', (version) => {
     const file = coverageFor(version)
     expect(coverageOf(file, 'listOrEmpty')).toEqual({ cov: 1, covKind: 'min(stmt,branch)' })
     expect(coverageOf(file, 'countOrEmpty')).toEqual({ cov: 1, covKind: 'min(stmt,branch)' })
@@ -51,7 +56,6 @@ describe('an if without an else counts its implicit else as a branch of the func
   it.each(['1.6.1', '3.2.4'] as const)('Vitest %s records no implicit else, so nothing changes', (version) => {
     const file = coverageFor(version)
     expect(Object.values(file.branchMap).flatMap((b) => b.locations).every((l) => l.start.line != null)).toBe(true)
-    expect(VERSIONS).toContain(version)
-    expect(coverageOf(file, 'retryDelay').cov).toBe(0.5)
+    expect(Object.fromEntries(FUNCTIONS.map((name) => [name, coverageOf(file, name).cov]))).toEqual(OLD_VERSION_COVERAGE[version])
   })
 })

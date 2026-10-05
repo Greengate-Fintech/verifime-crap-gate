@@ -57,10 +57,12 @@ const hasStart = (loc: IstanbulLocation | undefined): loc is IstanbulLocation =>
   loc?.start?.line != null
 
 /**
- * Istanbul records an `if` without an `else` as two locations: the consequent, and an implicit
- * `else` whose position is empty. The hits for the path that did not take the `if` sit in that
- * slot. An empty location has no position of its own, so it belongs to the function that holds
- * its branch (the branch's own `loc`) and counts with its own hit count.
+ * Vitest 4 and 5 (and any other Istanbul producer that writes it) record an `if` without an
+ * `else` as two locations: the consequent, and an implicit `else` whose position is empty. The
+ * hits for the path that skips the `if` sit in that slot. An empty location has no position of
+ * its own, so it belongs to every function whose span holds its branch's own `loc` (as a located
+ * branch does, so an enclosing function counts it as well as an inner one) and counts with its
+ * own hit count. A branch with no usable `loc` leaves its empty slots uncounted.
  */
 const branchTally = (file: IstanbulFileCoverage, fnSpan: Span): Tally => {
   const tally: Tally = { total: 0, covered: 0 }
