@@ -93,6 +93,12 @@ A complexity message the lint pass recorded no span for cannot be joined: it is 
 
 Known limit: when one source file is covered both by a package on Vitest 1 to 3 and by a package on Vitest 4 or 5 (only during a migration), the two coverage files start their entries and statements at different places. The entries do not merge, only one of them is used, and the statements of both are counted, so that function's coverage can read low. Move every package to the same Vitest major to remove it.
 
+### How a function's coverage is computed
+
+A function's coverage is the lower of its statement coverage and its branch coverage (`min(stmt,branch)`), and CRAP uses that value. Statements and branch locations count for the function that contains them. An `if` without an `else` has two branch locations: the consequent, and an implicit `else` that Vitest 4 and 5 record with an empty position. The implicit `else` counts for the function that contains its `if`, with its own hit count, so a function that ran down the default path of a guard does not score coverage 0.
+
+Known limit: a `?? []` (or another `??`) whose two branch locations both show no hits although the statement ran was seen in a real project and could not be reproduced on a synthetic package under Vitest 4.1 and 5.0. It is not the implicit `else` (a `??` has two located branches), so the gate does not correct it. Such a function can read lower coverage than it earned.
+
 ## Commands
 
 Each command runs from the repository root. Each lints and measures itself. Every command also takes `--config <path>`, the configuration file to read (see Configuration).

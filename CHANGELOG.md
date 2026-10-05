@@ -14,6 +14,7 @@ Score impact: changing
   - a class field initialiser took the next member's entry, which shifted every later member;
   - a source file in two coverage files: one copy of an entry was used and the other left for another function to take. Entries with an identical span are now merged.
 - On Vitest 1 to 3, the functions of a file no test loads now show as unmatched. Before, the first of them could take the file's one placeholder entry and be scored at coverage 0; now none is, so `crap/unmatched.tsv` can grow.
+- An `if` without an `else` now counts its implicit `else` as a branch (issue #14). Vitest 4 and 5 record it as a branch location with an empty position, with the hits of the path that ran, and the gate skipped it. A function that ran down the default path of a guard (the guard never fired) scored coverage 0, because its only counted branch had no hits. The implicit `else` now counts for the function that contains its `if`, with its own hit count: for example, a function of cyclomatic complexity 2 with 2 of 3 statements covered and a guard that never fires now scores CRAP 2.5, not 6. Vitest 1 to 3 record no such location, so their scores do not change.
 - Scores, `crap/baseline.tsv` and `crap/unmatched.tsv` rows can change. Run `npm run crap:baseline` once after upgrading, with `--allow-growth` if a function that was wrongly matched is now unmatched, and say why in the pull request.
 
 ### Added
@@ -23,6 +24,7 @@ Score impact: changing
 
 ### Known limits
 
+- A `??` whose two branch locations both show no hits although its statement ran was seen once in a real project and could not be reproduced on a synthetic package under Vitest 4.1 and 5.0. It is not the implicit `else`, so it is not corrected; such a function can read lower coverage than it earned.
 - A source file covered both by a Vitest 1 to 3 package and by a Vitest 4 or 5 package (during a migration) can read low coverage: the two converters start entries and statements at different places, so they do not merge.
 
 ## [1.0.1] - 2026-10-04
