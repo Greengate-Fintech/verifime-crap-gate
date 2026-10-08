@@ -4,6 +4,32 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    ignore:
+      # @types/node tracks the Node major the action runs on (action.yml runs.using, engines.node).
+      # Move it by hand when the runtime moves. test/dependabot-policy.test.ts enforces the match.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+      # eslint, typescript-eslint and typescript run in-process as the measure engine. A major
+      # version changes every consumer's scores, so it ships as a deliberate gate release.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "eslint"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "typescript-eslint"
+        update-types: ["version-update:semver-major"]
+    groups:
+      # Measure-engine parity: these packages must move together, so one PR keeps them in step.
+      measure-engine:
+        patterns:
+          - "eslint"
+          - "typescript-eslint"
+          - "typescript"
+        update-types: ["minor", "patch"]
+      # Paired packages: @vitest/* versions must match vitest exactly.
+      vitest:
+        patterns:
+          - "vitest"
+          - "@vitest/*"
   - package-ecosystem: github-actions
     directory: /
     schedule:
