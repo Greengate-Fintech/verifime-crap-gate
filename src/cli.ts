@@ -202,6 +202,9 @@ const computeTypeScript = (opts: MeasureOptions, config: CrapConfig): Outcome =>
 const compute = (opts: MeasureOptions, config: CrapConfig): Outcome =>
   config.language === 'java' ? computeJava(opts, config) : computeTypeScript(opts, config)
 
+/** A skipped line that reports at least one class, so the action can show it in the job summary. */
+export const isSkippedNote = (line: string): boolean => /^Classes skipped: [1-9]\d* \(/.test(line)
+
 const skippedLine = (s: SkippedClasses): string =>
   `Classes skipped: ${s.notJava + s.noSourceFile + s.notFound + s.excluded} (${s.notJava} not-Java, ${s.noSourceFile} no source file name, ${s.notFound} source not found under any scope root, ${s.excluded} excluded)`
 
