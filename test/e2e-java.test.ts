@@ -1,5 +1,5 @@
 import { spawnSync } from 'child_process'
-import { cpSync, readFileSync } from 'fs'
+import { cpSync, mkdirSync, readFileSync } from 'fs'
 import path from 'path'
 import { describe, expect, it } from 'vitest'
 import { runAction } from '../src/action'
@@ -209,6 +209,46 @@ describe('A2: the job summary shows the classes skipped', () => {
     const { result, summary } = await act(copyProject(), { INPUT_MODE: 'check' })
     expect(result.summary).toBe('CRAP ratchet: pass (6 frozen, 10 functions measured)')
     expect(summary).toContain(`\`${SKIPPED}\``)
+  })
+
+  it('adds the line when ten or more classes were skipped (two digits)', async () => {
+    const root = copyProject()
+    const generated = Array.from(
+      { length: 11 },
+      (_, i) => `<class name="com/example/web/Gen${i}" sourcefilename="Gen${i}.java"><method name="call" desc="()V" line="1"><counter type="LINE" missed="1" covered="0"/><counter type="COMPLEXITY" missed="0" covered="1"/></method></class>`,
+    ).join('')
+    writeFileIn(root, WEB, read(root, WEB).replace('</package>', `${generated}</package>`))
+    const { summary } = await act(root, { INPUT_MODE: 'measure' })
+    // The 11 new classes and the one generated class already in the fixture.
+    expect(summary).toContain('`Classes skipped: 12 (0 not-Java, 0 no source file name, 12 source not found under any scope root, 0 excluded)`')
+  })
+
+  it('on a failing run (every class skipped) shows the line after the summary line and before the errors', async () => {
+    const root = copyProject()
+    mkdirSync(path.join(root, 'empty-root'))
+    const config = JSON.parse(read(root, 'crap/config.json'))
+    writeFileIn(root, 'crap/config.json', JSON.stringify({ ...config, scope: ['empty-root'] }))
+    const { result, summary } = await act(root, { INPUT_MODE: 'measure' })
+    const problem = 'Scored no methods: 2 classes skipped (0 not-Java, 0 no source file name, 2 source not found under any scope root, 0 excluded); check "scope" and "extensions"'
+    expect(result.code).toBe(1)
+    expect(summary).toBe(
+      [
+        '### CRAP gate: measure',
+        '',
+        'Result: fail',
+        '',
+        `\`Problem: ${WEB} ${problem}\``,
+        '',
+        '`Classes skipped: 4 (0 not-Java, 0 no source file name, 4 source not found under any scope root, 0 excluded)`',
+        '',
+        '```',
+        'No functions were measured',
+        `Problem: ${CORE} ${problem}`,
+        `Problem: ${WEB} ${problem}`,
+        '```',
+        '',
+      ].join('\n'),
+    )
   })
 
   it('adds nothing when no class was skipped', async () => {

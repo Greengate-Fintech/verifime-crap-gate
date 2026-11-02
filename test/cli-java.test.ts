@@ -188,6 +188,26 @@ describe('A3: --coverage replaces the configured list, and says so', () => {
     expect(r.logs[0]).toBe('--coverage overrides the configured coverage: reading 2 reports from the flag, 1 configured report ignored')
   })
 
+  it('prints the note when the flag names a different file of the same length', async () => {
+    const root = javaProject()
+    withConfig(root, { coverage: [CORE] })
+    const r = await run(root, 'measure', '--coverage', WEB)
+    expect(r.logs[0]).toBe('--coverage overrides the configured coverage: reading 1 report from the flag, 1 configured report ignored')
+  })
+
+  it('says "3 reports" for three flags', async () => {
+    const root = javaProject()
+    writeFileIn(root, 'core/src/main/java/com/example/core/Extra.java', 'package com.example.core;\n\npublic class Extra {\n}\n')
+    writeFileIn(
+      root,
+      'extra/jacoco.xml',
+      '<report name="extra"><package name="com/example/core"><class name="com/example/core/Extra" sourcefilename="Extra.java"><method name="&lt;init&gt;" desc="()V" line="3"><counter type="LINE" missed="0" covered="1"/><counter type="COMPLEXITY" missed="0" covered="1"/></method></class></package></report>',
+    )
+    const r = await run(root, 'measure', '--coverage', CORE, '--coverage', WEB, '--coverage', 'extra/jacoco.xml')
+    expect(r.errors).toEqual([])
+    expect(r.logs[0]).toBe('--coverage overrides the configured coverage: reading 3 reports from the flag, 2 configured reports ignored')
+  })
+
   it('prints nothing when the flag names exactly the configured list', async () => {
     const r = await run(javaProject(), 'measure', '--coverage', CORE, '--coverage', WEB)
     expect(r.logs.some((l) => l.startsWith('--coverage'))).toBe(false)
@@ -304,7 +324,7 @@ describe('T6: pinned behaviour', () => {
     ])
   })
 
-  it('measures through a symlinked repository root', async () => {
+  it('smoke test: measures through a symlinked repository root (the missing-root test below guards realpathSync)', async () => {
     const real = javaProject()
     const link = path.join(tempRoot('crap-java-link'), 'link')
     symlinkSync(real, link)
