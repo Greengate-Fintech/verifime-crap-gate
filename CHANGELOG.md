@@ -4,6 +4,19 @@ All notable changes are recorded here, in the Keep a Changelog style. Each relea
 
 ## [Unreleased]
 
+Score impact: neutral
+
+### Added
+
+- Java support. A new config key `language` takes `"typescript"` (the default) or `"java"`. With `"java"`, the gate scores Java methods from JaCoCo XML reports and does not run ESLint. `scope` and `coverage` must be set (they have no Java default), `extensions` defaults to `[".java"]`, and `anchors` is not used. A config with no `language` key parses to exactly what it did in 1.1.0, so no TypeScript score, message or exit code changes.
+- Two new config errors: `key "language" must be "typescript" or "java"`, and `key "scope" is required when "language" is "java"` (the same for `coverage`).
+- For Java, each `measure` prints `Classes skipped: <n> (...)` before the summary line, with the number of classes left out and why.
+- A Java section in the README: Gradle and Maven setup and the known limits.
+
+### Known limits
+
+- JaCoCo reads complexity from bytecode, so it can differ slightly from source complexity. Lambdas share one key per enclosing method. Two overloads whose parameter types share a simple name share one symbol. Generated code outside the `scope` roots is skipped and counted. A source root that is not in `scope` hides its methods.
+
 ## [1.1.0] - 2026-10-06
 
 Score impact: changing
