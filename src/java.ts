@@ -402,13 +402,15 @@ const measureReport = (run: Run, reportPath: string): void => {
   const groups = groupsOf(parsed)
   if (groups.some((g) => g.class !== undefined)) malformed(run, reportPath, 'a class is outside a package')
   run.tally = { classes: 0, skipped: noneSkipped() }
-  const before = run.out.functions.length
   for (const pkg of groups.flatMap((g) => g.package ?? [])) measurePackage(run, reportPath, pkg)
   const empty = emptyReport(run.tally)
-  if (empty !== null && run.out.functions.length === before) problem(run, { file: reportPath, message: empty })
+  if (empty !== null) problem(run, { file: reportPath, message: empty })
 }
 
-/** The problem text for a report that scored nothing, or null when its classes were not all skipped. */
+/**
+ * The problem text for a report that scored nothing, or null when one of its classes was not skipped
+ * (such a class is scored, or is already a problem).
+ */
 const emptyReport = (tally: ReportTally): string | null => {
   if (tally.classes === 0) return 'Scored no methods: the report lists no classes'
   const s = tally.skipped
