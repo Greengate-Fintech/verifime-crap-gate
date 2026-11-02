@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!DOCTYPE report PUBLIC "-//JACOCO//DTD Report 1.1//EN" "report.dtd">
+<report name="core">
+  <sessioninfo id="host-1" start="1700000000000" dump="1700000001000"/>
+  <package name="com/example/core">
+    <class name="com/example/core/Pricing" sourcefilename="Pricing.java">
+      <method name="&lt;init&gt;" desc="()V" line="6">
+        <counter type="INSTRUCTION" missed="0" covered="3"/>
+        <counter type="LINE" missed="0" covered="2"/>
+        <counter type="COMPLEXITY" missed="0" covered="1"/>
+        <counter type="METHOD" missed="0" covered="1"/>
+      </method>
+      <!-- discount: cc 4, 4 of 8 lines covered, 3 of 6 branches covered; cov = min(0.5, 0.5) = 0.5; CRAP = 4^2 * 0.5^3 + 4 = 6.000 -->
+      <method name="discount" desc="(I)I" line="10">
+        <counter type="INSTRUCTION" missed="10" covered="12"/>
+        <counter type="BRANCH" missed="3" covered="3"/>
+        <counter type="LINE" missed="4" covered="4"/>
+        <counter type="COMPLEXITY" missed="1" covered="3"/>
+        <counter type="METHOD" missed="0" covered="1"/>
+      </method>
+      <!-- total: cc 3, nothing covered; cov = 0; CRAP = 3^2 * 1 + 3 = 12.000 -->
+      <method name="total" desc="([I)I" line="24">
+        <counter type="INSTRUCTION" missed="20" covered="0"/>
+        <counter type="BRANCH" missed="4" covered="0"/>
+        <counter type="LINE" missed="5" covered="0"/>
+        <counter type="COMPLEXITY" missed="3" covered="0"/>
+        <counter type="METHOD" missed="1" covered="0"/>
+      </method>
+      <!-- names: cc 1, covered; CRAP = 1 -->
+      <method name="names" desc="(Ljava/util/List;)J" line="34">
+        <counter type="INSTRUCTION" missed="0" covered="9"/>
+        <counter type="LINE" missed="0" covered="1"/>
+        <counter type="COMPLEXITY" missed="0" covered="1"/>
+        <counter type="METHOD" missed="0" covered="1"/>
+      </method>
+      <!-- The lambda in names, keyed Pricing#names$lambda. cc 3, nothing covered; CRAP = 3^2 * 1 + 3 = 12.000 -->
+      <method name="lambda$names$0" desc="(Ljava/lang/String;)Z" line="34">
+        <counter type="INSTRUCTION" missed="12" covered="0"/>
+        <counter type="BRANCH" missed="4" covered="0"/>
+        <counter type="LINE" missed="1" covered="0"/>
+        <counter type="COMPLEXITY" missed="3" covered="0"/>
+        <counter type="METHOD" missed="1" covered="0"/>
+      </method>
+    </class>
+    <class name="com/example/core/Pricing$Tier" sourcefilename="Pricing.java">
+      <!-- The implicit constructor: cc 1, covered; CRAP = 1 -->
+      <method name="&lt;init&gt;" desc="()V" line="37">
+        <counter type="INSTRUCTION" missed="0" covered="3"/>
+        <counter type="LINE" missed="0" covered="1"/>
+        <counter type="COMPLEXITY" missed="0" covered="1"/>
+        <counter type="METHOD" missed="0" covered="1"/>
+      </method>
+      <!-- rate: cc 3 (an if and a ternary), nothing covered; CRAP = 3^2 * 1 + 3 = 12.000 -->
+      <method name="rate" desc="(Ljava/lang/String;[I)I" line="39">
+        <counter type="INSTRUCTION" missed="18" covered="0"/>
+        <counter type="BRANCH" missed="4" covered="0"/>
+        <counter type="LINE" missed="3" covered="0"/>
+        <counter type="COMPLEXITY" missed="3" covered="0"/>
+        <counter type="METHOD" missed="1" covered="0"/>
+      </method>
+    </class>
+  </package>
+</report>

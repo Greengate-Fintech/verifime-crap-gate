@@ -4,6 +4,8 @@ import { DEFAULT_CONFIG, loadConfig } from './config'
 import type { CrapConfig } from './config'
 import { lintScope } from './eslint'
 import { readBaseFile } from './git'
+import { measureJava } from './java'
+import type { SkippedClasses } from './java'
 import { measure } from './measure'
 import {
   BASELINE_DISPLAY,
@@ -20,6 +22,7 @@ import {
   type Violation,
 } from './ratchet'
 import { roundTo } from './score'
+import { assertScopeExists } from './scope'
 import type {
   CrapReport,
   CrapSummary,
@@ -125,9 +128,13 @@ const writeReport = (outPath: string, outcome: Outcome, summary: CrapSummary): v
   writeFileSync(outPath, `${JSON.stringify(report, null, 2)}\n`)
 }
 
+const assertCoverageGiven = (paths: readonly string[]): void => {
+  if (paths.length === 0) throw new Error('No coverage input given')
+}
+
 /** Merges the per-package coverage files. Keys are absolute paths, so a repeat is a mistake, not a merge. */
 const readCoverage = (paths: readonly string[]): Record<string, IstanbulFileCoverage> => {
-  if (paths.length === 0) throw new Error('No coverage input given')
+  assertCoverageGiven(paths)
   const merged: Record<string, IstanbulFileCoverage> = {}
   for (const file of paths) {
     for (const [key, entry] of Object.entries(readJson<Record<string, IstanbulFileCoverage>>(file, 'coverage'))) {
@@ -157,6 +164,8 @@ interface Outcome {
   listed: UnmatchedFunction[]
   stale: StaleUnmatched[]
   accepted: boolean
+  /** Java only: the classes the measure left out, so the run summary can say how many and why. */
+  skipped?: SkippedClasses
 }
 
 /** Listed unmatched functions join the scored functions at coverage 0; the rest stay unmatched and fail. */
@@ -172,13 +181,32 @@ const eslintInput = (opts: MeasureOptions): EslintFileResult[] => {
   return readJson<EslintFileResult[]>(opts.eslintPath, 'ESLint')
 }
 
-const compute = (opts: MeasureOptions, config: CrapConfig): Outcome => {
+/** The Java measure reads JaCoCo XML reports and needs neither ESLint nor Istanbul coverage. */
+const computeJava = (opts: MeasureOptions, config: CrapConfig): Outcome => {
+  assertCoverageGiven(opts.coveragePaths)
+  const repoRoot = realpathSync(opts.repoRoot)
+  // A root that is not a directory would hide its classes as "source not found", and a baseline run would delete their rows.
+  assertScopeExists(repoRoot, config)
+  const { measurement, skipped } = measureJava(config, repoRoot, opts.coveragePaths)
+  return { ...resolveUnmatched(measurement, opts), skipped }
+}
+
+const computeTypeScript = (opts: MeasureOptions, config: CrapConfig): Outcome => {
   const eslint = eslintInput(opts)
   const coverage = readCoverage(opts.coveragePaths)
   // ESLint and Istanbul report real paths, so a symlinked root (macOS /tmp -> /private/tmp)
   // must be resolved before joining, or every path would fall outside the root.
   return resolveUnmatched(measure(eslint, coverage, realpathSync(opts.repoRoot), undefined, config), opts)
 }
+
+const compute = (opts: MeasureOptions, config: CrapConfig): Outcome =>
+  config.language === 'java' ? computeJava(opts, config) : computeTypeScript(opts, config)
+
+/** A skipped line that reports at least one class, so the action can show it in the job summary. */
+export const isSkippedNote = (line: string): boolean => /^Classes skipped: [1-9]\d* \(/.test(line)
+
+const skippedLine = (s: SkippedClasses): string =>
+  `Classes skipped: ${s.notJava + s.noSourceFile + s.notFound + s.excluded} (${s.notJava} not-Java, ${s.noSourceFile} no source file name, ${s.notFound} source not found under any scope root, ${s.excluded} excluded)`
 
 /** Returns the process exit code. Fails closed: missing input, nothing measured, any problem or any unmatched function is 1. */
 export const runMeasure = (opts: MeasureOptions, io: Io): number => {
@@ -193,6 +221,7 @@ export const runMeasure = (opts: MeasureOptions, io: Io): number => {
     const problems = failures(outcome.measurement, outcome.stale)
     problems.forEach((p) => io.error(p))
     unjoinedLines(outcome.measurement).forEach((line) => io.log(line))
+    if (outcome.skipped !== undefined) io.log(skippedLine(outcome.skipped))
     io.log(summaryLine(summary))
     return problems.length === 0 ? 0 : 1
   } catch (e) {
@@ -210,6 +239,8 @@ export type LintedMeasureOptions = Omit<MeasureOptions, 'eslintPath' | 'eslintRe
 export const runMeasureLinted = async (opts: LintedMeasureOptions, config: CrapConfig, io: Io): Promise<number> => {
   try {
     rmSync(opts.outPath, { force: true })
+    // The Java measure reads JaCoCo reports: no lint pass, so no ESLint and no node toolchain.
+    if (config.language === 'java') return runMeasure({ ...opts, eslintPath: '', config }, io)
     // ESLint reports real paths, so the root it works from must be the resolved one.
     const eslintResults = await lintScope(realpathSync(opts.repoRoot), config)
     // `eslintPath` is read only when there are no `eslintResults`, so it is unused here.
@@ -820,10 +851,26 @@ const measureThen = async (
   return code === 0 ? next() : code
 }
 
+const reports = (n: number): string => `${n} ${n === 1 ? 'report' : 'reports'}`
+
+const sameList = (a: readonly string[], b: readonly string[]): boolean => a.length === b.length && a.every((item, i) => item === b[i])
+
+/** Java only: `--coverage` replaces the whole configured list, and a reader should see that it did. */
+const overrideNote = (named: readonly string[], config: CrapConfig): string | null =>
+  config.language !== 'java' || sameList(named, config.coverage)
+    ? null
+    : `--coverage overrides the configured coverage: reading ${reports(named.length)} from the flag, ${config.coverage.length} configured ${config.coverage.length === 1 ? 'report' : 'reports'} ignored`
+
+const measureCommand = (args: { coveragePaths: readonly string[]; acceptUnmatched: boolean }, config: CrapConfig, repoRoot: string, io: Io): Promise<number> => {
+  const note = overrideNote(args.coveragePaths, config)
+  if (note !== null) io.log(note)
+  return runMeasureLinted(lintedOptions(args.coveragePaths, args.acceptUnmatched, repoRoot), config, io)
+}
+
 const run = async (args: ParsedArgs, config: CrapConfig, repoRoot: string, io: Io): Promise<number> => {
   switch (args.command) {
     case 'measure':
-      return runMeasureLinted(lintedOptions(args.coveragePaths, args.acceptUnmatched, repoRoot), config, io)
+      return measureCommand(args, config, repoRoot, io)
     case 'check':
       return measureThen(lintedOptions(config.coverage, false, repoRoot), config, io, () =>
         runCheck(checkOptions(args.githubActions, config), io),

@@ -1,0 +1,9 @@
+{
+  "language": "java",
+  "threshold": 5,
+  "scope": ["core/src/main/java", "web/src/main/java"],
+  "coverage": [
+    "core/build/reports/jacoco/test/jacocoTestReport.xml",
+    "web/build/reports/jacoco/test/jacocoTestReport.xml"
+  ]
+}

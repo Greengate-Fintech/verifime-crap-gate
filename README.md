@@ -1,6 +1,6 @@
 # verifime-crap-gate
 
-A CRAP ratchet gate for TypeScript repositories. It scores each function by complexity and test coverage, then fails a build when the set of high-scoring functions grows or a recorded score worsens.
+A CRAP ratchet gate for TypeScript and Java repositories. It scores each function by complexity and test coverage, then fails a build when the set of high-scoring functions grows or a recorded score worsens.
 
 ## What the gate measures
 
@@ -8,7 +8,7 @@ CRAP is computed per function as:
 
     CRAP = cc^2 * (1 - cov)^3 + cc
 
-where `cc` is cyclomatic complexity and `cov` is the function's coverage ratio (0 to 1). The result is rounded to 3 decimal places. Complexity comes from ESLint, which the gate runs itself, in-process; coverage comes from Istanbul-format `coverage-final.json` files.
+where `cc` is cyclomatic complexity and `cov` is the function's coverage ratio (0 to 1). The result is rounded to 3 decimal places. Complexity comes from ESLint, which the gate runs itself, in-process; coverage comes from Istanbul-format `coverage-final.json` files. For Java, both come from JaCoCo XML reports (see Java).
 
 The threshold is 8. A function scoring above 8 is an offender.
 
@@ -103,7 +103,7 @@ Known limit: a `?? []` (or another `??`) whose two branch locations both show no
 
 Each command runs from the repository root. Each lints and measures itself. Every command also takes `--config <path>`, the configuration file to read (see Configuration).
 
-- `measure [--coverage <path>]... [--accept-unmatched]`: lints, joins the result to coverage and writes `coverage/crap-report.json`. Without `--coverage`, it reads the `coverage` files from the config (see Configuration), which default to `coverage/coverage-final.json` and `cdk/coverage/coverage-final.json`.
+- `measure [--coverage <path>]... [--accept-unmatched]`: lints, joins the result to coverage and writes `coverage/crap-report.json`. Without `--coverage`, it reads the `coverage` files from the config (see Configuration), which default to `coverage/coverage-final.json` and `cdk/coverage/coverage-final.json`. With `"language": "java"` it does not lint: `--coverage` names JaCoCo XML reports, and the config has no default for them (see Java).
 - `check`: runs `measure`, then the ratchet check against `crap/baseline.tsv`. It stops with exit 1, without the ratchet check, when the measure fails.
 - `baseline [--allow-growth] [--output-dir <dir>]`: runs `measure` with `--accept-unmatched`, then writes `crap/baseline.tsv` and `crap/unmatched.tsv`. It stops with exit 1 when the measure fails. With `--output-dir`, it writes `baseline.tsv` and `unmatched.tsv` into that directory instead, and leaves `crap/` alone. The growth check still reads `crap/baseline.tsv` and `crap/unmatched.tsv`.
 - `diff [--base-ref <rev>]`: compares the working tree's `crap/baseline.tsv` and `crap/unmatched.tsv` with the same files at a git revision. The default revision is `HEAD^1`, the first parent of the checked-out commit (for a pull request check, the first parent of the merge commit). It reads the base with `git`, not from the working tree.
@@ -122,11 +122,12 @@ The gate reads `crap/config.json` from the directory it runs in, or the file nam
 
 | Key | Type | Default | Meaning |
 |---|---|---|---|
-| `scope` | array of strings | `["src", "lib", "bin", "cdk/src", "cdk/lib", "cdk/bin"]` | Repo-relative directories whose files are measured. A file is measured when it sits under one of them. |
+| `language` | string | `"typescript"` | `"typescript"` or `"java"`. With `"java"`, `scope` and `coverage` must be set, `extensions` defaults to `[".java"]` and `anchors` is not used (see Java). |
+| `scope` | array of strings | `["src", "lib", "bin", "cdk/src", "cdk/lib", "cdk/bin"]` (none for Java: it must be set) | Repo-relative directories whose files are measured. A file is measured when it sits under one of them. |
 | `anchors` | array of strings | `["src", "lib", "bin", "cdk"]` | Path segment names used to join a coverage path from another machine to a measured file. The join tries each anchor segment of the coverage path, last first. |
-| `extensions` | array of strings | `[".ts"]` | File extensions measured, each with its leading dot. `.tsx` is measured only when listed. |
+| `extensions` | array of strings | `[".ts"]` (`[".java"]` for Java) | File extensions measured, each with its leading dot. `.tsx` is measured only when listed. |
 | `exclude` | array of strings | `[]` | Regular-expression sources matched against the repo-relative path. A match is not measured. They are added to the built-in exclude, which always applies (tests, mocks, fixtures, generated and build folders, declaration and config files). |
-| `coverage` | array of strings | `["coverage/coverage-final.json", "cdk/coverage/coverage-final.json"]` | Istanbul coverage files that `measure` reads. |
+| `coverage` | array of strings | `["coverage/coverage-final.json", "cdk/coverage/coverage-final.json"]` (none for Java: it must be set) | Istanbul coverage files that `measure` reads. For Java, JaCoCo XML reports. |
 | `threshold` | number | `8` | A function scoring above it is an offender. It applies to the `measure` summary and to `check` and `baseline`. It must be finite and greater than 0. |
 
 Notes:
@@ -143,11 +144,102 @@ The gate validates the file before it runs any command. It exits 1, naming `crap
 
 - the file is not valid JSON, or is not a JSON object;
 - a key is not in the table above;
+- `language` is not `"typescript"` or `"java"`;
+- `language` is `"java"` and `scope` or `coverage` is not set;
 - a value has the wrong type;
 - `scope`, `anchors`, `extensions` or `coverage` is an empty array;
 - a `scope` entry is not a repo-relative directory, an `anchors` entry is not one path segment name, an `extensions` entry does not start with a dot, or an `exclude` entry is not a valid regular expression.
 
 The baseline and unmatched files do not record the threshold. Changing `threshold` changes which functions are offenders, so regenerate both files after a change.
+
+## Java
+
+Set `"language": "java"` in `crap/config.json` to score Java methods. The gate then reads JaCoCo XML reports and does not run ESLint, so a Java repository needs no `npm install`, no ESLint and no TypeScript. The gate itself still runs on Node, through the action or `npx`. The commands, the baseline and unmatched files, the threshold and the exit codes are the same as for TypeScript.
+
+```json
+{
+  "language": "java",
+  "threshold": 5,
+  "scope": ["app/src/main/java", "core/src/main/java"],
+  "coverage": [
+    "app/build/reports/jacoco/test/jacocoTestReport.xml",
+    "core/build/reports/jacoco/test/jacocoTestReport.xml"
+  ]
+}
+```
+
+- `scope` lists the source root of every module, for example each `src/main/java`. There is no default. Every entry must be an existing directory, or the run fails with the same message as for TypeScript. A class is measured when its package path and source file name name a file under one of these roots.
+- `coverage` lists the JaCoCo XML report of every module. There is no default. The `--coverage` flag of `measure` overrides the whole list, and names JaCoCo XML files. When it names a different list, `measure` prints `--coverage overrides the configured coverage: reading <n> reports from the flag, <m> configured reports ignored` first. `check` and `baseline` always read `coverage`.
+- `extensions` defaults to `[".java"]`. `exclude` is matched against the repo-relative path of the source file. The built-in TypeScript exclude does not apply. `anchors` is not used.
+- `threshold` works as for TypeScript. The example uses 5.
+
+The advice in a failing check's messages says to run `npm run crap:baseline`, which is a script in a Node repository. A Java repository has no such script: run the `baseline` mode through the action, or through `npx` (see Use as a CLI), to regenerate `crap/baseline.tsv`.
+
+### How a method is scored
+
+JaCoCo lists every method of every class with its complexity and its line and branch counters, so the gate parses no source.
+
+- `cc` is the method's `COMPLEXITY` counter (missed plus covered).
+- `cov` is the lower of the line ratio and the branch ratio. A method with no branches uses the line ratio.
+- The score is the same formula as for TypeScript: `cc^2 * (1 - cov)^3 + cc`, rounded to 3 decimal places.
+- A row's file is the repo-relative path of the source file. Its symbol is `Class#method(parameter types)`, with simple type names, for example `Pricing#price(String,int)`. A nested class is `Outer.Inner`, an anonymous class is `Outer.1`, a constructor is `<init>` and a static initialiser is `<clinit>`. The row has no line number, so an edit above a method is not churn.
+- Every lambda in a method shares one key, `Class#method$lambda`, with no index and no parameters, and each lambda is one row.
+- JaCoCo lists every method, including those of classes no test loads, so `crap/unmatched.tsv` stays empty.
+
+A class is skipped, and counted, when its source file name does not end in a configured extension, when it has no source file name (compiled without debug information), when no file under any `scope` root matches its package and source file name (generated code is usually here), or when the matching file is matched by `exclude`. Each run prints one line before the summary line (the action also shows it in the job summary when at least one class was skipped):
+
+    Classes skipped: 1 (0 not-Java, 0 no source file name, 1 source not found under any scope root, 0 excluded)
+
+A report that scores no method fails the run and names these counts, so a wrong `scope` or `extensions` cannot pass as an empty report. A method that lacks a counter the score needs, a report that cannot be read or parsed, a source file found under two `scope` roots, and a method listed twice are problems. Each fails the run and names the report.
+
+### Gradle
+
+Apply the `jacoco` plugin in every module, write the XML report, and run the report after the tests:
+
+```groovy
+plugins {
+    id 'java'
+    id 'jacoco'
+}
+
+test {
+    finalizedBy jacocoTestReport
+}
+
+jacocoTestReport {
+    dependsOn test
+    reports {
+        xml.required = true
+    }
+}
+```
+
+Run `./gradlew test` (or `jacocoTestReport` after `test`) before the gate, so the reports exist. The default report path is `build/reports/jacoco/test/jacocoTestReport.xml` in each module.
+
+A Quarkus test module may show no coverage with the plain `jacoco` plugin, because the tests run the application in their own class loader. Add the Quarkus JaCoCo extension to that module's test dependencies and list the report it writes in `coverage`.
+
+With Maven, the `jacoco-maven-plugin` with its `prepare-agent` and `report` goals writes its HTML, XML and CSV reports into `target/site/jacoco` (the defaults). The `report` goal binds to the `verify` phase by default, so the XML report appears after `mvn verify`, not after `mvn test`. To get it after `mvn test`, bind the goal to the `test` phase:
+
+```xml
+<execution>
+  <id>report</id>
+  <phase>test</phase>
+  <goals>
+    <goal>report</goal>
+  </goals>
+</execution>
+```
+
+List the XML file from `target/site/jacoco` of every module in `coverage`.
+
+### Known limits
+
+- JaCoCo reads complexity from bytecode, so a method's `cc` can differ slightly from its source complexity. The score uses the bytecode value.
+- Lambdas share one key per enclosing method. Two offending lambdas in one method are two rows with the same key.
+- Two overloads whose parameter types share a simple name (for example `a.Foo` and `b.Foo`) share one symbol.
+- Generated code outside the `scope` roots is skipped and counted, not scored.
+- A source root that is not in `scope` hides its methods: they are skipped and counted, not scored. List the source root of every module.
+- A Kotlin or other non-Java source file is skipped unless its extension is in `extensions`.
 
 ## Exit codes
 
@@ -156,7 +248,7 @@ The baseline and unmatched files do not record the threshold. Changing `threshol
 
 ## Use as a GitHub Action
 
-The action runs the bundled gate on the runner's Node 24. It needs no `npm install`, no ESLint and no TypeScript in your repository. Your coverage must exist before the action runs, as `coverage/coverage-final.json` (or the files in `coverage` of your config).
+The action runs the bundled gate on the runner's Node 24. It needs no `npm install`, no ESLint and no TypeScript in your repository. Your coverage must exist before the action runs, as `coverage/coverage-final.json` (or the files in `coverage` of your config). For Java, run the tests and the JaCoCo report first (see Java); the action needs no JDK.
 
 Pin the action to an exact release tag, written `@vX.Y.Z` below (replace it with a tag that exists). Never pin to a moving major tag, and never to a branch or to a commit on `main`: `main` does not contain `dist/`, so only a release tag (or the release commit it points to) runs.
 

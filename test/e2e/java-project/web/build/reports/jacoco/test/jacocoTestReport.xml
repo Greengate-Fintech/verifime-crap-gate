@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!DOCTYPE report PUBLIC "-//JACOCO//DTD Report 1.1//EN" "report.dtd">
+<report name="web">
+  <sessioninfo id="host-1" start="1700000000000" dump="1700000001000"/>
+  <package name="com/example/web">
+    <class name="com/example/web/Router" sourcefilename="Router.java">
+      <!-- The constructor with a guard: cc 2, nothing covered; CRAP = 2^2 * 1 + 2 = 6.000 -->
+      <method name="&lt;init&gt;" desc="(Ljava/lang/String;I)V" line="6">
+        <counter type="INSTRUCTION" missed="14" covered="0"/>
+        <counter type="BRANCH" missed="2" covered="0"/>
+        <counter type="LINE" missed="5" covered="0"/>
+        <counter type="COMPLEXITY" missed="2" covered="0"/>
+        <counter type="METHOD" missed="1" covered="0"/>
+      </method>
+      <!-- route: cc 2, nothing covered; cov = 0; CRAP = 2^2 * 1 + 2 = 6.000 -->
+      <method name="route" desc="(Ljava/lang/String;)Ljava/lang/String;" line="14">
+        <counter type="INSTRUCTION" missed="12" covered="0"/>
+        <counter type="BRANCH" missed="2" covered="0"/>
+        <counter type="LINE" missed="3" covered="0"/>
+        <counter type="COMPLEXITY" missed="2" covered="0"/>
+        <counter type="METHOD" missed="1" covered="0"/>
+      </method>
+      <!-- ok: cc 1, covered; CRAP = 1 -->
+      <method name="ok" desc="()Z" line="21">
+        <counter type="INSTRUCTION" missed="0" covered="2"/>
+        <counter type="LINE" missed="0" covered="1"/>
+        <counter type="COMPLEXITY" missed="0" covered="1"/>
+        <counter type="METHOD" missed="0" covered="1"/>
+      </method>
+    </class>
+    <!-- Generated code sits outside the scope roots, so the gate skips it and counts it. -->
+    <class name="com/example/web/GeneratedClient" sourcefilename="GeneratedClient.java">
+      <method name="call" desc="()V" line="1">
+        <counter type="LINE" missed="5" covered="0"/>
+        <counter type="COMPLEXITY" missed="9" covered="0"/>
+      </method>
+    </class>
+  </package>
+</report>

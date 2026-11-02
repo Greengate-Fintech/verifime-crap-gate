@@ -1,9 +1,9 @@
-import { statSync } from 'fs'
 import path from 'path'
 import { ESLint } from 'eslint'
 import type { Linter, Rule } from 'eslint'
 import tseslint from 'typescript-eslint'
 import type { CrapConfig } from './config'
+import { assertScopeExists, isDirectory } from './scope'
 import { makeDeclarationRule, makeSpanRule } from './spans'
 import type { FunctionSpan, SourcePoint } from './types'
 
@@ -54,26 +54,9 @@ const collect = <T>(byFile: Map<string, T[]>) => (filename: string, ...items: T[
   byFile.set(filename, [...(byFile.get(filename) ?? []), ...items])
 }
 
-const isDirectory = (dir: string): boolean => {
-  try {
-    return statSync(dir).isDirectory()
-  } catch {
-    return false
-  }
-}
-
 /** The scope directories that exist under the repo root, in scope order. */
 export const lintTargets = (repoRoot: string, scope: readonly string[]): string[] =>
   scope.filter((dir) => isDirectory(path.join(repoRoot, dir)))
-
-/** A scope the consumer set must exist: the ESLint CLI failed on a missing pattern, so a typo must not shrink the measure silently. */
-const assertScopeExists = (repoRoot: string, config: CrapConfig): void => {
-  if (config.scopeFrom === undefined) return
-  const missing = config.scope.find((dir) => !isDirectory(path.join(repoRoot, dir)))
-  if (missing !== undefined) {
-    throw new Error(`Invalid ${config.scopeFrom}: key "scope" entry ${JSON.stringify(missing)} is not an existing directory`)
-  }
-}
 
 /** The order the ESLint CLI gives its results (`compareResultsByFilePath`): plain `<` and `>` on the path. */
 const byFilePath = (a: ESLint.LintResult, b: ESLint.LintResult): number => {

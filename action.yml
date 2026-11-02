@@ -1,5 +1,5 @@
 name: CRAP ratchet gate
-description: Scores TypeScript functions by complexity and test coverage, and fails when the set of high-scoring functions grows.
+description: Scores TypeScript or Java functions by complexity and test coverage, and fails when the set of high-scoring functions grows.
 inputs:
   mode:
     description: The command to run. One of measure, check, baseline, diff.
