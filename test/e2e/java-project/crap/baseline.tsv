@@ -1,0 +1,9 @@
+# CRAP ratchet baseline: the lowest recorded score of every function above the threshold.
+# See the README "CRAP gate" section for how to respond to a failing check.
+# Format: file<TAB>symbol<TAB>score, one row per scored occurrence.
+# The baseline only shrinks. Regenerate with: npm run crap:baseline
+# Growth (new offenders or worse scores) needs: npm run crap:baseline -- --allow-growth
+
+core/src/main/java/com/example/core/Pricing.java	Pricing#discount(int)	6.000
+core/src/main/java/com/example/core/Pricing.java	Pricing#total(int[])	12.000
+web/src/main/java/com/example/web/Router.java	Router#route(String)	6.000

@@ -3,9 +3,15 @@ import path from 'path'
 import { CRAP_THRESHOLD } from './ratchet'
 
 // Loads and validates `crap/config.json`. Pure validation lives in parseConfig; loadConfig only
-// adds the file read. Every key is optional and the defaults reproduce the original gate exactly.
+// adds the file read. Every key is optional and the defaults reproduce the original gate exactly,
+// except for `language: "java"`, where `scope` and `coverage` have no default and must be set.
+
+export const LANGUAGES = ['typescript', 'java'] as const
+export type Language = (typeof LANGUAGES)[number]
 
 export interface CrapConfig {
+  /** The measure to use. Absent means TypeScript, and a config without the key parses to exactly what it did before the key existed. */
+  readonly language?: Language
   /** Repo-relative directories whose files are measured. */
   readonly scope: readonly string[]
   /** Path segment names that start a suffix when a coverage path is joined to a measured file. */
@@ -69,6 +75,11 @@ const listOf =
     return bad === undefined ? null : entryProblem(key, bad, rule)
   }
 
+const languageCheck: Check = (value) =>
+  LANGUAGES.some((language) => language === value)
+    ? null
+    : `key "language" must be ${LANGUAGES.map(quoted).join(' or ')}`
+
 const thresholdCheck: Check = (value) =>
   typeof value === 'number' && Number.isFinite(value) && value > 0
     ? null
@@ -78,6 +89,7 @@ const thresholdCheck: Check = (value) =>
 type FileKey = Exclude<keyof CrapConfig, 'scopeFrom'>
 
 const CHECKS: Record<FileKey, Check> = {
+  language: languageCheck,
   scope: listOf('scope', false, isDirectory, 'must be a repo-relative directory'),
   anchors: listOf('anchors', false, (s) => s !== '' && !/[\\/]/.test(s), 'must be one path segment name'),
   extensions: listOf('extensions', false, (s) => /^\.[^./\\]+(\.[^./\\]+)*$/.test(s), 'must start with a dot, as in ".ts"'),
@@ -112,8 +124,21 @@ const validate = (raw: Record<string, unknown>, display: string): void => {
   }
 }
 
+// Java roots and JaCoCo report locations differ per repository, and the TypeScript defaults would
+// mislead, so `scope` and `coverage` have none: the file must set them.
+const JAVA_REQUIRED = ['scope', 'coverage'] as const
+
+const JAVA_DEFAULTS = { ...DEFAULT_CONFIG, extensions: ['.java'] }
+
+const requireForJava = (raw: Record<string, unknown>, display: string): void => {
+  if (raw.language !== 'java') return
+  const missing = JAVA_REQUIRED.find((key) => !(key in raw))
+  if (missing !== undefined) throw invalid(`key "${missing}" is required when "language" is "java"`, display)
+}
+
 const withDefaults = (raw: Record<string, unknown>, display: string): CrapConfig => {
-  const merged = { ...DEFAULT_CONFIG, ...raw } as CrapConfig
+  const defaults = raw.language === 'java' ? JAVA_DEFAULTS : DEFAULT_CONFIG
+  const merged = { ...defaults, ...raw } as CrapConfig
   const scoped = { ...merged, scope: merged.scope.map(trimSlashes) }
   return 'scope' in raw ? { ...scoped, scopeFrom: display } : scoped
 }
@@ -123,6 +148,7 @@ export const parseConfig = (text: string, display: string = CONFIG_DISPLAY): Cra
   const raw = parseJson(text, display)
   if (!isPlainObject(raw)) throw invalid('must be a JSON object', display)
   validate(raw, display)
+  requireForJava(raw, display)
   return withDefaults(raw, display)
 }
 
