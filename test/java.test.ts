@@ -91,6 +91,39 @@ describe('symbols and kinds', () => {
     expect(one(m, 'Pricing#apply(Map.Entry[])').kind).toBe('Method')
   })
 
+  it.each([
+    ['lambda$run$0', 'Foo#run$lambda'],
+    ['lambda$run$12', 'Foo#run$lambda'],
+    ['lambda$static$0', 'Foo#static$lambda'],
+    ['lambda$new$1', 'Foo#new$lambda'],
+    // javac 9 and later name a lambda inside a lambda after the outer lambda: no index at any depth.
+    ['lambda$lambda$main$0$1', 'Foo#main$lambda'],
+    ['lambda$lambda$lambda$main$0$1$2', 'Foo#main$lambda'],
+    // javac 8 names a lambda inside a lambda "null": the name chain gives no enclosing method, so the key is null$lambda.
+    ['lambda$null$1', 'Foo#null$lambda'],
+  ])('keys the lambda %s as %s', (name, symbol) => {
+    const m = synthetic(report(foo(method(`name="${name}" desc="()V" line="3"`))))
+    expect(m.measurement.problems).toEqual([])
+    expect(m.measurement.functions.map((f) => [f.symbol, f.kind])).toEqual([[symbol, 'Lambda']])
+  })
+
+  it.each(['lambda$run$x', 'lambda$$0', 'lambda$run$0x', 'lambda$run', 'lambda$lambda$foo$1'])(
+    'reports the malformed lambda name %s',
+    (name) => {
+      const m = synthetic(report(foo(method(`name="${name}" desc="()V" line="3"`))))
+      expect(m.measurement.functions).toEqual([])
+      expect(m.measurement.problems).toEqual([
+        { file: 'build/jacoco.xml', message: 'Malformed JaCoCo report: a method of com/example/Foo has an unrecognised lambda name' },
+      ])
+    },
+  )
+
+  it.each(['xlambda$run$0', 'my$lambda$run$0', 'lambda'])('treats %s, which is not a lambda name, as a method', (name) => {
+    const m = synthetic(report(foo(method(`name="${name}" desc="()V" line="3"`))))
+    expect(m.measurement.problems).toEqual([])
+    expect(m.measurement.functions.map((f) => [f.symbol, f.kind])).toEqual([[`Foo#${name}()`, 'Method']])
+  })
+
   it.each(['toString', 'constructor', 'hasOwnProperty', 'valueOf', '__proto__'])(
     'gives a method named %s the kind Method',
     (name) => {

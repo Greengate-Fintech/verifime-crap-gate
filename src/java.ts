@@ -133,11 +133,24 @@ interface MethodName {
   symbol: string
 }
 
+/**
+ * The method a lambda body belongs to, from javac's `lambda$<enclosing>$<n>`. A lambda inside a
+ * lambda is named after the outer lambda (`lambda$lambda$main$0$1`), so the name is unwrapped until
+ * a real method name is left: no index survives at any depth. javac 8 names the enclosing method of
+ * a nested lambda `null`; the chain gives nothing better, so that key is `null$lambda`.
+ */
+const lambdaEnclosing = (name: string): string | null => {
+  const enclosing = LAMBDA.exec(name)?.[1]
+  return enclosing?.startsWith('lambda$') ? lambdaEnclosing(enclosing) : (enclosing ?? null)
+}
+
 /** The kind and the symbol of a method, or null when a lambda's name has no enclosing method. */
+// Known limit: parameter types are simple names, so overloads whose parameters share a simple name
+// across packages (price(a.Foo) and price(b.Foo)) share one symbol and count as occurrences.
 const methodName = (cls: string, name: string, params: string[]): MethodName | null => {
   if (name.startsWith('lambda$')) {
-    const enclosing = LAMBDA.exec(name)?.[1]
-    return enclosing === undefined ? null : { kind: 'Lambda', symbol: `${cls}#${enclosing}$lambda` }
+    const enclosing = lambdaEnclosing(name)
+    return enclosing === null ? null : { kind: 'Lambda', symbol: `${cls}#${enclosing}$lambda` }
   }
   return { kind: SPECIAL_KINDS.get(name) ?? 'Method', symbol: `${cls}#${name}(${params.join(',')})` }
 }
