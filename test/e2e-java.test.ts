@@ -9,10 +9,14 @@ import { inDirectory, makeIo, tempRoot, writeFileIn } from './helpers/sandbox'
 // A synthetic two-module Java project (threshold 5) run through every command, as the TypeScript
 // e2e project is. Scores are CRAP = cc^2 * (1 - cov)^3 + cc, with cov = min(line, branch).
 //
-//   Pricing#discount(int)    cc 4, cov 0.5  -> 6.000   frozen
-//   Pricing#total(int[])     cc 3, cov 0    -> 12.000  frozen
-//   Router#route(String)     cc 2, cov 0    -> 6.000   frozen
-//   Pricing#<init>(), Router#<init>(), Router#ok()  cc 1, covered -> 1.000 each
+//   Pricing#discount(int)             cc 4, cov 0.5  -> 6.000   frozen
+//   Pricing#total(int[])              cc 3, cov 0    -> 12.000  frozen
+//   Pricing#names$lambda              cc 3, cov 0    -> 12.000  frozen (a lambda: one key per enclosing method)
+//   Pricing.Tier#rate(String,int[])   cc 3, cov 0    -> 12.000  frozen (a nested class, a comma, an array parameter)
+//   Router#<init>(String,int)         cc 2, cov 0    -> 6.000   frozen (a constructor)
+//   Router#route(String)              cc 2, cov 0    -> 6.000   frozen
+//   Pricing#<init>(), Pricing#names(List), Pricing.Tier#<init>(), Router#ok()  cc 1, covered -> 1.000 each
+// Totals: functions = 10, over5 = 6, sumOver5 = 6 + 12 + 12 + 12 + 6 + 6 = 54.
 
 const FIXTURE = path.join(__dirname, 'e2e', 'java-project')
 const CLI = path.join(__dirname, '..', 'dist', 'cli.cjs')
@@ -20,7 +24,7 @@ const CORE = 'core/build/reports/jacoco/test/jacocoTestReport.xml'
 const WEB = 'web/build/reports/jacoco/test/jacocoTestReport.xml'
 const PRICING = 'core/src/main/java/com/example/core/Pricing.java'
 const ROUTER = 'web/src/main/java/com/example/web/Router.java'
-const MEASURE_LINE = 'CRAP measure: functions=6 over5=3 sumOver5=24.0 unmatched=0'
+const MEASURE_LINE = 'CRAP measure: functions=10 over5=6 sumOver5=54.0 unmatched=0'
 
 const copyProject = (): string => {
   const root = tempRoot('crap-java-e2e')
@@ -36,6 +40,17 @@ const run = async (root: string, ...argv: string[]) => {
   return { code, logs: out.logs, errors: out.errors }
 }
 
+/** The text of the one `<method name=...>` element, so an edit cannot reach another method with the same counters. */
+const editMethod = (root: string, rel: string, name: string, from: string, to: string): void => {
+  const text = read(root, rel)
+  const start = text.indexOf(`<method name="${name}"`)
+  const end = text.indexOf('</method>', start)
+  expect(start).toBeGreaterThan(-1)
+  const method = text.slice(start, end)
+  expect(method).toContain(from)
+  writeFileIn(root, rel, text.slice(0, start) + method.replace(from, to) + text.slice(end))
+}
+
 /** Replaces one piece of text in a report (each piece used is unique in its file), to change what the report says. */
 const edit = (root: string, rel: string, from: string, to: string): void => {
   const text = read(root, rel)
@@ -43,8 +58,11 @@ const edit = (root: string, rel: string, from: string, to: string): void => {
   writeFileIn(root, rel, text.replace(from, to))
 }
 
+const raiseDiscount = (root: string): void =>
+  editMethod(root, CORE, 'discount', '<counter type="LINE" missed="4" covered="4"/>', '<counter type="LINE" missed="6" covered="2"/>')
+
 describe('Java e2e: the committed project', () => {
-  it('measure scores the six methods and reports the skipped generated class', async () => {
+  it('measure scores the ten methods and reports the skipped generated class', async () => {
     const r = await run(copyProject(), 'measure')
     expect(r.code).toBe(0)
     expect(r.logs.at(-1)).toBe(MEASURE_LINE)
@@ -54,7 +72,7 @@ describe('Java e2e: the committed project', () => {
   it('check passes against the committed baseline', async () => {
     const r = await run(copyProject(), 'check')
     expect(r.errors).toEqual([])
-    expect(r.logs.at(-1)).toBe('CRAP ratchet: pass (3 frozen, 6 functions measured)')
+    expect(r.logs.at(-1)).toBe('CRAP ratchet: pass (6 frozen, 10 functions measured)')
     expect(r.code).toBe(0)
   })
 
@@ -64,6 +82,22 @@ describe('Java e2e: the committed project', () => {
     for (const file of ['baseline.tsv', 'unmatched.tsv']) {
       expect(read(root, `regen/${file}`)).toBe(readFileSync(path.join(FIXTURE, 'crap', file), 'utf8'))
     }
+  })
+
+  it.each([
+    [PRICING, 'Pricing#names$lambda', '12.000'],
+    [PRICING, 'Pricing.Tier#rate(String,int[])', '12.000'],
+    [ROUTER, 'Router#<init>(String,int)', '6.000'],
+  ])('freezes %s %s, and the row survives the write and the read back', async (file, symbol, score) => {
+    const root = copyProject()
+    const out = path.join(root, 'regen')
+    expect((await run(root, 'baseline', '--output-dir', out)).code).toBe(0)
+    expect(read(root, 'regen/baseline.tsv')).toContain(`${file}\t${symbol}\t${score}\n`)
+    // The committed file holds the same row, `check` reads it back, and `diff` sees no change.
+    expect(read(root, 'crap/baseline.tsv')).toContain(`${file}\t${symbol}\t${score}\n`)
+    expect((await run(root, 'check')).code).toBe(0)
+    const diff = await run(root, 'diff', '--base', 'regen/baseline.tsv', '--base-unmatched', 'regen/unmatched.tsv')
+    expect(diff.code).toBe(0)
   })
 
   it('diff passes when the head files equal the base files', async () => {
@@ -96,8 +130,8 @@ describe('Java e2e: the ratchet', () => {
 
   it('a raised score fails check', async () => {
     const root = copyProject()
-    // discount: line 1 of 4 covered -> cov = min(0.25, 0.5) = 0.25; CRAP = 16 * 0.75^3 + 4 = 10.750 (was 6.000).
-    edit(root, CORE, '<counter type="LINE" missed="2" covered="2"/>', '<counter type="LINE" missed="3" covered="1"/>')
+    // discount: 2 of 8 lines covered -> cov = min(0.25, 0.5) = 0.25; CRAP = 16 * 0.75^3 + 4 = 10.750 (was 6.000).
+    raiseDiscount(root)
     const r = await run(root, 'check')
     expect(r.code).toBe(1)
     expect(r.errors.join('\n')).toContain(`CRAP ratchet: REGRESSION ${PRICING}#Pricing#discount(int)`)
@@ -107,8 +141,8 @@ describe('Java e2e: the ratchet', () => {
   it('an improved method that drops to the threshold or below is stale, and fails check', async () => {
     const root = copyProject()
     // route: fully covered -> cc 2, cov 1 -> CRAP = 2.000, at or below 5, so its frozen row is stale.
-    edit(root, WEB, '<counter type="BRANCH" missed="2" covered="0"/>', '<counter type="BRANCH" missed="0" covered="2"/>')
-    edit(root, WEB, '<counter type="LINE" missed="3" covered="0"/>', '<counter type="LINE" missed="0" covered="3"/>')
+    editMethod(root, WEB, 'route', '<counter type="BRANCH" missed="2" covered="0"/>', '<counter type="BRANCH" missed="0" covered="2"/>')
+    editMethod(root, WEB, 'route', '<counter type="LINE" missed="3" covered="0"/>', '<counter type="LINE" missed="0" covered="3"/>')
     const r = await run(root, 'check')
     expect(r.code).toBe(1)
     expect(r.errors.join('\n')).toContain(`CRAP ratchet: STALE ENTRY ${ROUTER}#Router#route(String)`)
@@ -119,7 +153,7 @@ describe('Java e2e: the ratchet', () => {
 describe('Java e2e: baseline and diff', () => {
   it('baseline refuses a new offender without --allow-growth, and writes nothing', async () => {
     const root = copyProject()
-    edit(root, CORE, '<counter type="LINE" missed="2" covered="2"/>', '<counter type="LINE" missed="3" covered="1"/>')
+    raiseDiscount(root)
     const before = read(root, 'crap/baseline.tsv')
     const r = await run(root, 'baseline')
     expect(r.code).toBe(1)
@@ -131,7 +165,7 @@ describe('Java e2e: baseline and diff', () => {
     const root = copyProject()
     writeFileIn(root, 'base/baseline.tsv', read(root, 'crap/baseline.tsv'))
     writeFileIn(root, 'base/unmatched.tsv', read(root, 'crap/unmatched.tsv'))
-    edit(root, CORE, '<counter type="LINE" missed="2" covered="2"/>', '<counter type="LINE" missed="3" covered="1"/>')
+    raiseDiscount(root)
     expect((await run(root, 'baseline', '--allow-growth')).code).toBe(0)
     expect(read(root, 'crap/baseline.tsv')).toContain(`${PRICING}\tPricing#discount(int)\t10.750\n`)
     const r = await run(root, 'diff', '--base', 'base/baseline.tsv', '--base-unmatched', 'base/unmatched.tsv')
@@ -173,7 +207,7 @@ describe('A2: the job summary shows the classes skipped', () => {
 
   it('adds the line on a green check, after the pass line', async () => {
     const { result, summary } = await act(copyProject(), { INPUT_MODE: 'check' })
-    expect(result.summary).toBe('CRAP ratchet: pass (3 frozen, 6 functions measured)')
+    expect(result.summary).toBe('CRAP ratchet: pass (6 frozen, 10 functions measured)')
     expect(summary).toContain(`\`${SKIPPED}\``)
   })
 
@@ -182,5 +216,34 @@ describe('A2: the job summary shows the classes skipped', () => {
     writeFileIn(root, WEB, read(root, WEB).replace(/<class name="com\/example\/web\/GeneratedClient"[\s\S]*?<\/class>/, ''))
     const { summary } = await act(root, { INPUT_MODE: 'measure' })
     expect(summary).not.toContain('Classes skipped')
+  })
+})
+
+describe('T5: a TypeScript run prints exactly what it printed before Java support', () => {
+  const TS_FIXTURE = path.join(__dirname, 'e2e', 'project')
+  const TS_MEASURE = 'CRAP measure: functions=4 over5=2 sumOver5=23.1 unmatched=0'
+
+  it('measure prints the one summary line and nothing else', async () => {
+    const root = tempRoot('crap-ts-e2e')
+    cpSync(TS_FIXTURE, root, { recursive: true })
+    expect(await run(root, 'measure')).toEqual({ code: 0, logs: [TS_MEASURE], errors: [] })
+  })
+
+  it('check prints the summary line and the pass line and nothing else', async () => {
+    const root = tempRoot('crap-ts-e2e')
+    cpSync(TS_FIXTURE, root, { recursive: true })
+    expect(await run(root, 'check')).toEqual({
+      code: 0,
+      logs: [TS_MEASURE, 'CRAP ratchet: pass (2 frozen, 4 functions measured)'],
+      errors: [],
+    })
+  })
+
+  it('the action job summary for a TypeScript project has no note', async () => {
+    const root = tempRoot('crap-ts-e2e')
+    cpSync(TS_FIXTURE, root, { recursive: true })
+    const gh = path.join(root, 'gh-summary.md')
+    await runAction({ INPUT_MODE: 'measure', GITHUB_STEP_SUMMARY: gh }, root, makeIo().io)
+    expect(readFileSync(gh, 'utf8')).toBe(`### CRAP gate: measure\n\nResult: pass\n\n\`${TS_MEASURE}\`\n`)
   })
 })

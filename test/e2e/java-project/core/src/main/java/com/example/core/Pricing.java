@@ -1,5 +1,7 @@
 package com.example.core;
 
+import java.util.List;
+
 public class Pricing {
     public Pricing() {
     }
@@ -26,5 +28,18 @@ public class Pricing {
             }
         }
         return sum;
+    }
+
+    public long names(List<String> items) {
+        return items.stream().filter(s -> s != null && !s.isEmpty()).count();
+    }
+
+    public static class Tier {
+        int rate(String code, int[] steps) {
+            if (code == null) {
+                return 0;
+            }
+            return steps.length > 1 ? steps[1] : steps[0];
+        }
     }
 }

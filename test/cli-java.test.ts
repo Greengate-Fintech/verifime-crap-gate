@@ -9,7 +9,7 @@ const lintScope = vi.hoisted(() => vi.fn(async (): Promise<never[]> => []))
 vi.mock('../src/eslint', () => ({ lintScope }))
 
 const FIXTURE = path.join(__dirname, 'e2e', 'java-project')
-const MEASURE_LINE = 'CRAP measure: functions=6 over5=3 sumOver5=24.0 unmatched=0'
+const MEASURE_LINE = 'CRAP measure: functions=10 over5=6 sumOver5=54.0 unmatched=0'
 const SKIPPED_LINE =
   'Classes skipped: 1 (0 not-Java, 0 no source file name, 1 source not found under any scope root, 0 excluded)'
 
@@ -64,7 +64,7 @@ describe('the Java path', () => {
     await run(root, 'measure')
     const report = JSON.parse(readFileSync(path.join(root, 'coverage/crap-report.json'), 'utf8'))
     expect(Object.keys(report)).toEqual(['summary', 'functions', 'unmatched', 'listedUnmatched', 'staleUnmatched', 'acceptedUnmatched'])
-    expect(report.summary).toEqual({ functions: 6, over5: 3, sumOver5: 24, unmatched: 0 })
+    expect(report.summary).toEqual({ functions: 10, over5: 6, sumOver5: 54, unmatched: 0 })
     expect(report.unmatched).toEqual([])
   })
 
@@ -72,7 +72,7 @@ describe('the Java path', () => {
     const root = javaProject()
     const r = await run(root, 'measure', '--coverage', 'web/build/reports/jacoco/test/jacocoTestReport.xml')
     expect(r.code).toBe(0)
-    expect(r.logs.at(-1)).toBe('CRAP measure: functions=3 over5=1 sumOver5=6.0 unmatched=0')
+    expect(r.logs.at(-1)).toBe('CRAP measure: functions=3 over5=2 sumOver5=12.0 unmatched=0')
   })
 
   it('exits 1 for a problem, naming the report', async () => {

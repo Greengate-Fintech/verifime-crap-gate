@@ -5,5 +5,8 @@
 # Growth (new offenders or worse scores) needs: npm run crap:baseline -- --allow-growth
 
 core/src/main/java/com/example/core/Pricing.java	Pricing#discount(int)	6.000
+core/src/main/java/com/example/core/Pricing.java	Pricing#names$lambda	12.000
 core/src/main/java/com/example/core/Pricing.java	Pricing#total(int[])	12.000
+core/src/main/java/com/example/core/Pricing.java	Pricing.Tier#rate(String,int[])	12.000
+web/src/main/java/com/example/web/Router.java	Router#<init>(String,int)	6.000
 web/src/main/java/com/example/web/Router.java	Router#route(String)	6.000
