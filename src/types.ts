@@ -1,5 +1,5 @@
 /** 'unmatched' is a function the coverage provider has no entry for, scored at coverage 0. */
-export type CovKind = 'min(stmt,branch)' | 'stmt' | 'branch' | 'called' | 'unmatched'
+export type CovKind = 'min(stmt,branch)' | 'stmt' | 'branch' | 'called' | 'unmatched' | 'min(line,branch)' | 'line'
 
 export interface IstanbulLocation {
   start: { line: number; column: number | null }

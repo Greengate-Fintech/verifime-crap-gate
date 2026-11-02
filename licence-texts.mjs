@@ -53,6 +53,11 @@ export const SUPPLIED = {
     source: 'the License section of the package README',
     text: MIT('Copyright (c) 2013 Gary Court, Jens Taylor'),
   },
+  '@nodable/entities': {
+    licence: 'MIT',
+    source: 'the author field of package.json and the License section of the package README ("MIT"; it states no year)',
+    text: MIT('Copyright (c) Amit Gupta'),
+  },
   keyv: {
     licence: 'MIT',
     source: 'the License section of the package README ("MIT (c) Jared Wray"; it states no year)',
