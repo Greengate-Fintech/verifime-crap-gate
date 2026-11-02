@@ -387,11 +387,13 @@ describe('failing closed', () => {
     ])
   })
 
-  it('skips a class with no sourcefilename as out of scope', () => {
-    const m = synthetic(report(foo(method('name="a" desc="()V" line="1"'), 'name="com/example/Foo"')))
-    expect(m.measurement.functions).toEqual([])
+  it('skips a class with no sourcefilename as out of scope, counted as having no source file name', () => {
+    const noSource = foo(method('name="a" desc="()V" line="1"'), 'name="com/example/Bar"')
+    const m = synthetic(report(noSource + foo(method('name="b" desc="()V" line="1"'))))
     expect(m.measurement.problems).toEqual([])
+    expect(m.measurement.functions.map((f) => f.symbol)).toEqual(['Foo#b()'])
     expect(m.outOfScope).toBe(1)
+    expect(m.skipped).toEqual({ notJava: 0, noSourceFile: 1, notFound: 0, excluded: 0 })
   })
 
   it('reports the problems of every report, not only the first', () => {
@@ -402,6 +404,113 @@ describe('failing closed', () => {
     const m = measureJava(CONFIG, REPO, ['a.xml', 'b.xml'], fs)
     expect(m.measurement.problems.map((p) => p.file)).toEqual(['a.xml'])
     expect(m.measurement.functions.map((f) => f.symbol)).toEqual(['Foo#ok()'])
+  })
+})
+
+describe('a report that scores nothing', () => {
+  const GONE = foo(method('name="a" desc="()V" line="1"'), 'name="com/example/Gone" sourcefilename="Gone.java"')
+  const KOTLIN = foo(method('name="a" desc="()V" line="1"'), 'name="com/example/Kt" sourcefilename="Kt.kt"')
+  const NO_NAME = foo(method('name="a" desc="()V" line="1"'), 'name="com/example/Bare"')
+  const EXCLUDED = foo(method('name="a" desc="()V" line="1"'), 'name="com/example/Skip" sourcefilename="Skip.java"')
+
+  it.each([
+    ['an empty report element', '<report/>'],
+    ['a report with attributes and no children', '<report name="t"/>'],
+    ['a report with no packages', '<report name="t"><sessioninfo id="a" start="1" dump="2"/></report>'],
+    ['a package with no classes', '<report name="t"><package name="com/example"/></report>'],
+    ['an empty group', '<report name="t"><group name="g"/></report>'],
+  ])('is a problem for %s', (_label, xml) => {
+    const m = synthetic(xml)
+    expect(m.measurement.functions).toEqual([])
+    expect(m.measurement.problems).toEqual([
+      { file: 'build/jacoco.xml', message: 'Scored no methods: the report lists no classes' },
+    ])
+  })
+
+  it('is a problem when every class was skipped, with the reason for each', () => {
+    const m = synthetic(
+      report(KOTLIN + NO_NAME + GONE + EXCLUDED),
+      ['src/main/java/com/example/Kt.kt', 'src/main/java/com/example/Skip.java'],
+      { ...CONFIG, exclude: ['Skip'] },
+    )
+    expect(m.measurement.functions).toEqual([])
+    expect(m.measurement.problems).toEqual([
+      {
+        file: 'build/jacoco.xml',
+        message:
+          'Scored no methods: 4 classes skipped (1 not-Java, 1 no source file name, 1 source not found under any scope root, 1 excluded); check "scope" and "extensions"',
+      },
+    ])
+    expect(m.outOfScope).toBe(4)
+    expect(m.skipped).toEqual({ notJava: 1, noSourceFile: 1, notFound: 1, excluded: 1 })
+  })
+
+  it('is a problem for a wrong extensions setting, and the message shows it', () => {
+    const m = synthetic(report(foo(method('name="a" desc="()V" line="1"'))), [SOURCE], { ...CONFIG, extensions: ['.kt'] })
+    expect(m.measurement.problems.map((p) => p.message)).toEqual([
+      'Scored no methods: 1 classes skipped (1 not-Java, 0 no source file name, 0 source not found under any scope root, 0 excluded); check "scope" and "extensions"',
+    ])
+  })
+
+  it('is not a problem when some class was scored, and counts the skipped ones', () => {
+    const m = run(['report.xml'])
+    expect(m.measurement.problems).toEqual([])
+    expect(m.outOfScope).toBe(2)
+    expect(m.skipped).toEqual({ notJava: 1, noSourceFile: 0, notFound: 1, excluded: 0 })
+  })
+
+  it('names only the report that scores nothing', () => {
+    const fs: JavaFileSystem = {
+      readFile: (abs) => (abs.endsWith('a.xml') ? '<report/>' : report(foo(method('name="ok" desc="()V" line="1"')))),
+      fileExists: () => true,
+    }
+    const m = measureJava(CONFIG, REPO, ['a.xml', 'b.xml'], fs)
+    expect(m.measurement.problems.map((p) => p.file)).toEqual(['a.xml'])
+    expect(m.measurement.functions.map((f) => f.symbol)).toEqual(['Foo#ok()'])
+  })
+
+  it('does not call a report with only malformed methods an empty one', () => {
+    const m = synthetic(report(foo(method('desc="()V" line="1"'))))
+    expect(m.measurement.problems.map((p) => p.message)).toEqual([
+      'Malformed JaCoCo report: a method of com/example/Foo has no name or desc',
+    ])
+  })
+
+  it('reports a class placed directly under the report', () => {
+    const good = report(foo(method('name="ok" desc="()V" line="1"'))).replace('</report>', `${foo('')}</report>`)
+    const m = synthetic(good)
+    expect(m.measurement.problems).toEqual([
+      { file: 'build/jacoco.xml', message: 'Malformed JaCoCo report: a class is outside a package' },
+    ])
+    expect(m.measurement.functions.map((f) => f.symbol)).toEqual(['Foo#ok()'])
+  })
+
+  it('reports a class placed directly under a group', () => {
+    const good = report(foo(method('name="ok" desc="()V" line="1"'))).replace('</report>', `<group name="g">${foo('')}</group></report>`)
+    const m = synthetic(good)
+    expect(m.measurement.problems.map((p) => p.message)).toEqual([
+      'Malformed JaCoCo report: a class is outside a package',
+    ])
+  })
+
+  const ONE = report(foo(method('name="ok" desc="()V" line="1"')))
+
+  it.each([
+    ['two empty report elements', '<report name="a"/><report name="b"/>'],
+    ['a report followed by an empty one', `${ONE}<report/>`],
+  ])('reports %s', (_label, xml) => {
+    const m = synthetic(xml)
+    expect(m.measurement.functions).toEqual([])
+    expect(m.measurement.problems).toEqual([
+      { file: 'build/jacoco.xml', message: 'Not a JaCoCo report: more than one <report> element' },
+    ])
+  })
+
+  it('reports two full report elements, which the XML check already refuses', () => {
+    const m = synthetic(`${ONE}${ONE.replace('<?xml version="1.0" encoding="UTF-8"?>', '')}`)
+    expect(m.measurement.functions).toEqual([])
+    expect(m.measurement.problems).toHaveLength(1)
+    expect(m.measurement.problems[0].message).toMatch(/^Cannot parse the JaCoCo report: /)
   })
 })
 

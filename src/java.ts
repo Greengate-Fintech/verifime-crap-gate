@@ -17,10 +17,25 @@ export interface JavaFileSystem {
   fileExists: (absPath: string) => boolean
 }
 
+/** Why classes were skipped, so a wrong `scope` or `extensions` shows in the run summary. */
+export interface SkippedClasses {
+  /** The source file name does not end in a configured extension. */
+  notJava: number
+  /** The class has no `sourcefilename` (compiled without debug information). */
+  noSourceFile: number
+  /** The package and source file name match no file under any scope root (for example generated code). */
+  notFound: number
+  /** The one matching file is matched by a `config.exclude` pattern. */
+  excluded: number
+}
+
+type SkipReason = keyof SkippedClasses
+
 export interface JavaMeasurement {
   measurement: Measurement
-  /** Classes skipped because their source is not a configured extension, root or non-excluded path. */
+  /** The total of `skipped`: classes that are not scored and are not a problem. */
   outOfScope: number
+  skipped: SkippedClasses
 }
 
 const REAL_FS: JavaFileSystem = {
@@ -55,6 +70,8 @@ interface XmlPackage {
 interface XmlGroup {
   group?: XmlGroup[]
   package?: XmlPackage[]
+  /** A class here is outside a package: malformed. */
+  class?: unknown
 }
 
 const ARRAY_TAGS = new Set(['group', 'package', 'class', 'method', 'counter'])
@@ -74,19 +91,21 @@ const PARSER = new XMLParser({
 const parseReport = (xml: string): XmlGroup | string => {
   const valid = XMLValidator.validate(xml)
   if (valid !== true) return `Cannot parse the JaCoCo report: ${valid.err.msg} (line ${valid.err.line})`
-  let root: { report?: XmlGroup }
+  let root: { report?: XmlGroup | XmlGroup[] | string }
   try {
-    root = PARSER.parse(xml) as { report?: XmlGroup }
+    root = PARSER.parse(xml) as typeof root
   } catch (cause) {
     return `Cannot parse the JaCoCo report: ${(cause as Error).message}`
   }
-  return root.report ?? 'Not a JaCoCo report: the root element is not <report>'
+  const report = root.report
+  if (Array.isArray(report)) return 'Not a JaCoCo report: more than one <report> element'
+  if (report === undefined) return 'Not a JaCoCo report: the root element is not <report>'
+  // An element with no attributes and no children parses to the empty string.
+  return typeof report === 'string' ? {} : report
 }
 
-const packagesOf = (node: XmlGroup): XmlPackage[] => [
-  ...(node.package ?? []),
-  ...(node.group ?? []).flatMap(packagesOf),
-]
+/** The report or group and every group below it, in document order. */
+const groupsOf = (node: XmlGroup): XmlGroup[] => [node, ...(node.group ?? []).flatMap(groupsOf)]
 
 // ---------------------------------------------------------------------------------------
 // Names
@@ -196,7 +215,15 @@ const coverageOf = (line: Tally, branch: Tally | undefined): { cov: number; covK
 // Source paths
 // ---------------------------------------------------------------------------------------
 
-type Resolved = { rel: string } | { outOfScope: true } | { conflict: true }
+type Resolved = { rel: string } | { skipped: SkipReason } | { conflict: true }
+
+/** What one report holds, to tell a report that scores nothing from one that scores something. */
+interface ReportTally {
+  classes: number
+  skipped: SkippedClasses
+}
+
+const noneSkipped = (): SkippedClasses => ({ notJava: 0, noSourceFile: 0, notFound: 0, excluded: 0 })
 
 interface Run {
   config: CrapConfig
@@ -204,7 +231,8 @@ interface Run {
   fs: JavaFileSystem
   excludes: RegExp[]
   out: Measurement
-  outOfScope: number
+  skipped: SkippedClasses
+  tally: ReportTally
   /** A source file seen once is resolved once, so one ambiguity is one problem. */
   resolved: Map<string, Resolved>
   /** The report that first produced each file, symbol and line. */
@@ -229,14 +257,13 @@ const resolveSource = (run: Run, report: string, pkg: string, sourceFile: string
     })
     return { conflict: true }
   }
-  const excluded = matches.length === 1 && run.excludes.some((re) => re.test(matches[0]))
-  return matches.length === 1 && !excluded ? { rel: matches[0] } : { outOfScope: true }
+  if (matches.length === 0) return { skipped: 'notFound' }
+  return run.excludes.some((re) => re.test(matches[0])) ? { skipped: 'excluded' } : { rel: matches[0] }
 }
 
 const sourceOf = (run: Run, report: string, pkg: string, sourceFile: string | undefined): Resolved => {
-  if (sourceFile === undefined || !run.config.extensions.some((ext) => sourceFile.endsWith(ext))) {
-    return { outOfScope: true }
-  }
+  if (sourceFile === undefined) return { skipped: 'noSourceFile' }
+  if (!run.config.extensions.some((ext) => sourceFile.endsWith(ext))) return { skipped: 'notJava' }
   const key = path.posix.join(pkg, sourceFile)
   const known = run.resolved.get(key) ?? resolveSource(run, report, pkg, sourceFile)
   run.resolved.set(key, known)
@@ -326,13 +353,17 @@ const measureClass = (run: Run, report: string, pkg: string, cls: XmlClass): voi
   const classPath = cls['@_name']
   if (classPath === undefined) return malformed(run, report, 'a class has no name')
   const source = sourceOf(run, report, pkg, cls['@_sourcefilename'])
-  if ('outOfScope' in source) run.outOfScope += 1
+  if ('skipped' in source) {
+    run.tally.skipped[source.skipped] += 1
+    run.skipped[source.skipped] += 1
+  }
   if (!('rel' in source)) return
   measureMethods(run, { report, file: source.rel, cls: simpleClass(classPath), classPath }, cls)
 }
 
 const measurePackage = (run: Run, report: string, pkg: XmlPackage): void => {
   const name = pkg['@_name']
+  run.tally.classes += (pkg.class ?? []).length
   if (name === undefined) return malformed(run, report, 'a package has no name')
   for (const cls of pkg.class ?? []) measureClass(run, report, name, cls)
 }
@@ -347,7 +378,22 @@ const measureReport = (run: Run, reportPath: string): void => {
   }
   const parsed = parseReport(xml)
   if (typeof parsed === 'string') return problem(run, { file: reportPath, message: parsed })
-  for (const pkg of packagesOf(parsed)) measurePackage(run, reportPath, pkg)
+  const groups = groupsOf(parsed)
+  if (groups.some((g) => g.class !== undefined)) malformed(run, reportPath, 'a class is outside a package')
+  run.tally = { classes: 0, skipped: noneSkipped() }
+  const before = run.out.functions.length
+  for (const pkg of groups.flatMap((g) => g.package ?? [])) measurePackage(run, reportPath, pkg)
+  const empty = emptyReport(run.tally)
+  if (empty !== null && run.out.functions.length === before) problem(run, { file: reportPath, message: empty })
+}
+
+/** The problem text for a report that scored nothing, or null when its classes were not all skipped. */
+const emptyReport = (tally: ReportTally): string | null => {
+  if (tally.classes === 0) return 'Scored no methods: the report lists no classes'
+  const s = tally.skipped
+  const total = s.notJava + s.noSourceFile + s.notFound + s.excluded
+  if (total < tally.classes) return null
+  return `Scored no methods: ${total} classes skipped (${s.notJava} not-Java, ${s.noSourceFile} no source file name, ${s.notFound} source not found under any scope root, ${s.excluded} excluded); check "scope" and "extensions"`
 }
 
 /**
@@ -368,10 +414,12 @@ export const measureJava = (
     fs,
     excludes: config.exclude.map((source) => new RegExp(source)),
     out,
-    outOfScope: 0,
+    skipped: noneSkipped(),
+    tally: { classes: 0, skipped: noneSkipped() },
     resolved: new Map(),
     seen: new Map(),
   }
   for (const report of reports) measureReport(run, report)
-  return { measurement: out, outOfScope: run.outOfScope }
+  const s = run.skipped
+  return { measurement: out, outOfScope: s.notJava + s.noSourceFile + s.notFound + s.excluded, skipped: s }
 }
