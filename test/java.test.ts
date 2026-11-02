@@ -686,6 +686,35 @@ describe('a report that scores nothing', () => {
     ])
   })
 
+  it('reports one problem for a stray class beside a package whose classes are all skipped', () => {
+    const stray = foo('')
+    const skippedClass = foo(method('name="a" desc="()V" line="1"'), 'name="com/example/Gone" sourcefilename="Gone.java"')
+    const xml = `<report name="t">${stray}<package name="com/example">${skippedClass}</package></report>`
+    const m = synthetic(xml)
+    expect(m.measurement.functions).toEqual([])
+    expect(m.measurement.problems.map((p) => p.message)).toEqual([
+      'Malformed JaCoCo report: a class is outside a package',
+    ])
+  })
+
+  it("does not carry one report's skipped classes into the next", () => {
+    const skippedOnly = report(foo(method('name="a" desc="()V" line="1"'), 'name="com/example/Gone" sourcefilename="Gone.java"'))
+    const scored = report(foo(method('name="ok" desc="()V" line="1"')))
+    const fs: JavaFileSystem = {
+      readFile: (abs) => (abs.endsWith('a.xml') ? skippedOnly : scored),
+      fileExists: (abs) => abs === `${REPO}/${SOURCE}`,
+    }
+    const m = measureJava(CONFIG, REPO, ['a.xml', 'b.xml'], fs)
+    expect(m.measurement.functions.map((f) => f.symbol)).toEqual(['Foo#ok()'])
+    expect(m.measurement.problems.map((p) => [p.file, p.message])).toEqual([
+      [
+        'a.xml',
+        'Scored no methods: 1 class skipped (0 not-Java, 0 no source file name, 1 source not found under any scope root, 0 excluded); check "scope" and "extensions"',
+      ],
+    ])
+    expect(m.skipped).toEqual({ notJava: 0, noSourceFile: 0, notFound: 1, excluded: 0 })
+  })
+
   it('names only the report that scores nothing', () => {
     const fs: JavaFileSystem = {
       readFile: (abs) => (abs.endsWith('a.xml') ? '<report/>' : report(foo(method('name="ok" desc="()V" line="1"')))),
