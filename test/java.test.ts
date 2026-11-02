@@ -158,9 +158,19 @@ describe('scores', () => {
     expect(unused).toMatchObject({ cc: 3, cov: 0, covKind: 'min(line,branch)', crap: 12 })
   })
 
+  it('uses the branch ratio when it is the lower one', () => {
+    // cc 2, line 1/4 = 0.25, branch 3/4 = 0.75 -> cov 0.25 (a branch-only rule would give 0.75).
+    // CRAP = 4 * 0.421875 + 2 = 3.6875, rounded to 3.688
+    const counters = counter('LINE', 3, 1) + counter('BRANCH', 1, 3) + counter('COMPLEXITY', 0, 2)
+    const m = synthetic(report(foo(method('name="a" desc="()V" line="1"', counters))))
+    expect(m.measurement.functions).toMatchObject([{ cc: 2, cov: 0.25, covKind: 'min(line,branch)', crap: 3.688 }])
+  })
+
   it('scores every method of a module with no tests at coverage 0', () => {
     const m = run(['no-tests.xml'])
     expect(m.measurement.problems).toEqual([])
+    // JaCoCo lists every method, so nothing is unmatched even when no test ran.
+    expect(m.measurement.unmatched).toEqual([])
     // price(int): cc 2, cov 0, CRAP = 4 + 2 = 6. price(String,int): cc 1, cov 0, CRAP = 1 + 1 = 2.
     expect(m.measurement.functions.map((f) => [f.symbol, f.cc, f.cov, f.crap])).toEqual([
       ['Pricing#price(int)', 2, 0, 6],
@@ -192,10 +202,6 @@ describe('scores', () => {
     expect(heavy).toMatchObject({ cc: 30, cov: 0.6667, covKind: 'line', crap: 63.333 })
   })
 
-  it('leaves unmatched empty', () => {
-    expect(run(['report.xml']).measurement.unmatched).toEqual([])
-  })
-
   it('scores the methods of several reports in the order given', () => {
     const m = run(['no-tests.xml', 'config-conflict.xml'], { ...CONFIG, scope: ['src/main/java', 'common/src/main/java'] })
     expect(m.measurement.functions.map((f) => f.symbol)).toEqual([
@@ -214,17 +220,67 @@ describe('source path resolution', () => {
     expect(one(m, 'Stub#pong()').file).toBe('src/main/java/com/example/generated/Stub.java')
   })
 
+  // Fixture note: KotlinHelper.kt is a real file under the scope root, so only the extension check
+  // skips it. ClientStub.java is deliberately absent from disk: the "under no scope root" test relies on that.
   it('skips and counts a class whose sourcefilename is not a configured extension', () => {
     const m = run(['report.xml'])
     expect(find(m, 'KotlinHelper#help()')).toEqual([])
     expect(m.measurement.problems).toEqual([])
     expect(find(m, 'Pricing#price(int)')).toHaveLength(1)
+    expect(m.skipped.notJava).toBe(1)
   })
 
   it('skips and counts a class whose source sits under no scope root', () => {
     const m = run(['report.xml'])
     expect(find(m, 'ClientStub#call()')).toEqual([])
+    expect(m.skipped.notFound).toBe(1)
     expect(m.outOfScope).toBe(2)
+  })
+
+  it('measures a .java source when .kt is also a configured extension', () => {
+    const m = run(['report.xml'], { ...CONFIG, extensions: ['.java', '.kt'] })
+    expect(one(m, 'Pricing#price(int)').file).toBe(PRICING)
+    expect(one(m, 'KotlinHelper#help()').file).toBe('src/main/java/com/example/KotlinHelper.kt')
+    expect(m.outOfScope).toBe(1)
+  })
+
+  it('skips a source file whose name only contains a configured extension', () => {
+    const bak = foo(method('name="a" desc="()V" line="1"'), 'name="com/example/Bak" sourcefilename="Foo.java.bak"')
+    const m = synthetic(report(bak + foo(method('name="b" desc="()V" line="1"'))), [
+      'src/main/java/com/example/Foo.java.bak',
+      SOURCE,
+    ])
+    expect(m.measurement.functions.map((f) => f.symbol)).toEqual(['Foo#b()'])
+    expect(m.skipped.notJava).toBe(1)
+  })
+
+  it('finds a file once when a scope root is listed twice', () => {
+    const m = run(['report.xml'], { ...CONFIG, scope: ['src/main/java', 'src/main/java'] })
+    expect(m.measurement.problems).toEqual([])
+    expect(one(m, 'Pricing#price(int)').file).toBe(PRICING)
+  })
+
+  it('keeps a class with no sourcefilename out of scope even when a file of its name exists', () => {
+    // X.java is a real file under the scope root. The class entry names no source file, so it is not guessed.
+    const xml = report(foo(method('name="a" desc="()V" line="1"'), 'name="com/example/X"') + foo(method('name="b" desc="()V" line="1"'), 'name="com/example/Pricing" sourcefilename="Pricing.java"'))
+    const fs: JavaFileSystem = { readFile: () => xml, fileExists: existsSync }
+    const m = measureJava(CONFIG, FIXTURES, ['jacoco.xml'], fs)
+    expect(m.measurement.functions.map((f) => f.symbol)).toEqual(['Pricing#b()'])
+    expect(m.measurement.problems).toEqual([])
+    expect(m.skipped.noSourceFile).toBe(1)
+    expect(m.outOfScope).toBe(1)
+  })
+
+  it('resolves the same file name in two packages to two files', () => {
+    const util = (pkg: string) =>
+      `<package name="${pkg}"><class name="${pkg}/Util" sourcefilename="Util.java">${method('name="run" desc="()V" line="1"')}</class></package>`
+    const sources = ['src/main/java/com/a/Util.java', 'src/main/java/com/b/Util.java']
+    const m = synthetic(`<report name="t">${util('com/a')}${util('com/b')}</report>`, sources)
+    expect(m.measurement.problems).toEqual([])
+    expect(m.measurement.functions.map((f) => [f.file, f.symbol])).toEqual([
+      ['src/main/java/com/a/Util.java', 'Util#run()'],
+      ['src/main/java/com/b/Util.java', 'Util#run()'],
+    ])
   })
 
   it('counts each out-of-scope class, not each file', () => {
@@ -312,6 +368,34 @@ describe('failing closed', () => {
     ])
   })
 
+  describe('what counts as the same method', () => {
+    const two = (a: string, b: string, sources: string[]): JavaMeasurement => {
+      const fs: JavaFileSystem = {
+        readFile: (abs) => (abs.endsWith('a.xml') ? a : b),
+        fileExists: (abs) => sources.some((s) => abs === `${REPO}/${s}`),
+      }
+      return measureJava(CONFIG, REPO, ['a.xml', 'b.xml'], fs)
+    }
+    const classIn = (pkg: string, line: number): string =>
+      `<report name="t"><package name="${pkg}"><class name="${pkg}/Util" sourcefilename="Util.java">${method(`name="run" desc="()V" line="${line}"`)}</class></package></report>`
+    const utils = ['src/main/java/com/a/Util.java', 'src/main/java/com/b/Util.java']
+
+    it('does not mix up one simple class name in two packages', () => {
+      const m = two(classIn('com/a', 1), classIn('com/b', 1), utils)
+      expect(m.measurement.problems).toEqual([])
+      expect(m.measurement.functions.map((f) => f.file)).toEqual(utils)
+    })
+
+    it('does not call a method at another line in a second report a duplicate', () => {
+      const m = two(classIn('com/a', 1), classIn('com/a', 9), utils)
+      expect(m.measurement.problems).toEqual([])
+      expect(m.measurement.functions.map((f) => [f.symbol, f.line])).toEqual([
+        ['Util#run()', 1],
+        ['Util#run()', 9],
+      ])
+    })
+  })
+
   it('does not call two lambdas on one line in one report a duplicate', () => {
     const lambdas =
       method('name="lambda$run$0" desc="()V" line="5"') + method('name="lambda$run$1" desc="()V" line="5"')
@@ -367,11 +451,9 @@ describe('failing closed', () => {
     ])
   })
 
-  it('does not follow an external entity, and reads nothing but the report', () => {
-    const reads: string[] = []
+  it('does not follow an external entity: the report is refused', () => {
     const fs: JavaFileSystem = {
-      readFile: (abs) => {
-        reads.push(abs)
+      readFile: () => {
         return `<?xml version="1.0"?><!DOCTYPE report [<!ENTITY ext SYSTEM "file:///etc/hostname">]><report>${report(foo(method('name="&ext;" desc="()V" line="1"')))}</report>`
       },
       fileExists: () => true,
@@ -380,20 +462,31 @@ describe('failing closed', () => {
     expect(m.measurement.functions).toEqual([])
     expect(m.measurement.problems).toHaveLength(1)
     expect(m.measurement.problems[0].file).toBe('ext.xml')
-    expect(reads).toEqual([`${REPO}/ext.xml`])
+    expect(m.measurement.problems[0].message).toMatch(/^Cannot parse the JaCoCo report: /)
   })
 
   it.each([
     ['a method with no COMPLEXITY counter', method('name="a" desc="()V" line="1"', counter('LINE', 0, 1)), 'has no COMPLEXITY counter'],
     ['a method with no LINE counter', method('name="a" desc="()V" line="1"', counter('COMPLEXITY', 0, 1)), 'has no LINE counter'],
     ['a LINE counter that counts nothing', method('name="a" desc="()V" line="1"', counter('LINE', 0, 0) + counter('COMPLEXITY', 0, 1)), 'has no LINE counter'],
+    ['a COMPLEXITY counter that counts nothing', method('name="a" desc="()V" line="1"', counter('LINE', 0, 1) + counter('COMPLEXITY', 0, 0)), 'has no COMPLEXITY counter'],
+    ['a method with no counter elements', method('name="a" desc="()V" line="1"', ''), 'has no COMPLEXITY counter'],
     ['a method with no name', method('desc="()V" line="1"'), 'has no name or desc'],
     ['a method with no desc', method('name="a" line="1"'), 'has no name or desc'],
-    ['a method with an invalid desc', method('name="a" desc="(I" line="1"'), 'has an invalid desc'],
+    ...['(I', 'x(I)V', '(I)Vx', '(L;)V', '(I)'].map((desc) => [`a method with the desc ${desc}`, method(`name="a" desc="${desc}" line="1"`), 'has an invalid desc']),
     ['a method with no line', method('name="a" desc="()V"'), 'has no line'],
     ['a method with an invalid line', method('name="a" desc="()V" line="x"'), 'has an invalid line'],
     ['a counter with a bad number', method('name="a" desc="()V" line="1"', '<counter type="LINE" missed="-1" covered="1"/>'), 'has an invalid or repeated counter'],
     ['a counter with no type', method('name="a" desc="()V" line="1"', '<counter missed="0" covered="1"/>'), 'has an invalid or repeated counter'],
+    ...[
+      ['an empty missed value', '<counter type="LINE" missed="" covered="1"/>'],
+      ['a missed value with trailing text', '<counter type="LINE" missed="1x" covered="1"/>'],
+      ['a missing covered value', '<counter type="LINE" missed="0"/>'],
+      ['a missing missed value', '<counter type="LINE" covered="1"/>'],
+      ['a negative covered value', '<counter type="LINE" missed="0" covered="-1"/>'],
+      ['a decimal value', '<counter type="LINE" missed="1.0" covered="1"/>'],
+      ['an exponent value', '<counter type="LINE" missed="0" covered="1e3"/>'],
+    ].map(([label, bad]) => [`a counter with ${label}`, method('name="a" desc="()V" line="1"', bad + counter('COMPLEXITY', 0, 1)), 'has an invalid or repeated counter']),
     ['a repeated counter', method('name="a" desc="()V" line="1"', GOOD_COUNTERS + counter('LINE', 0, 1)), 'has an invalid or repeated counter'],
     ['a lambda with an unrecognised name', method('name="lambda$odd" desc="()V" line="1"'), 'has an unrecognised lambda name'],
   ])('names the report for %s', (_label, methods, reason) => {
@@ -402,6 +495,14 @@ describe('failing closed', () => {
     expect(m.measurement.problems).toEqual([
       { file: 'build/jacoco.xml', message: `Malformed JaCoCo report: a method of com/example/Foo ${reason}` },
     ])
+  })
+
+  it('accepts a class with no methods and a package with no classes beside a scored class', () => {
+    const empties = '<package name="com/empty"/>' + `<package name="com/example">${foo('')}</package>`
+    const xml = report(foo(method('name="a" desc="()V" line="1"'))).replace('</report>', `${empties}</report>`)
+    const m = synthetic(xml)
+    expect(m.measurement.problems).toEqual([])
+    expect(m.measurement.functions.map((f) => f.symbol)).toEqual(['Foo#a()'])
   })
 
   it('reports a package with no name', () => {
@@ -602,7 +703,24 @@ describe('the JaCoCo DOCTYPE', () => {
 
     expect(readFileSync(path.join(FIXTURES, 'report.xml'), 'utf8')).toContain('<!DOCTYPE report PUBLIC')
     expect(m.measurement.problems).toEqual([])
-    expect(m.measurement.functions.length).toBeGreaterThan(10)
+    // Packages directly under the report come before the packages of its groups.
+    expect(m.measurement.functions.map((f) => f.symbol)).toEqual([
+      'Probe#ping()',
+      'Stub#pong()',
+      'Pricing#<init>(String)',
+      'Pricing#price(int)',
+      'Pricing#price(String,int)',
+      'Pricing#apply(Map.Entry[])',
+      'Pricing#apply$lambda',
+      'Pricing#apply$lambda',
+      'Pricing#unused()',
+      'Pricing#pin()',
+      'Pricing#heavy()',
+      'Pricing#everything(boolean,byte,char,short,int,long,float,double,long[][])',
+      'Pricing#<clinit>()',
+      'Pricing.Tier#rate()',
+      'Pricing.1#run()',
+    ])
     expect(fetchStub).not.toHaveBeenCalled()
     transports.forEach((spy) => expect(spy).not.toHaveBeenCalled())
     expect(reads).toEqual([path.join(FIXTURES, 'report.xml')])
