@@ -168,8 +168,8 @@ Set `"language": "java"` in `crap/config.json` to score Java methods. The gate t
 }
 ```
 
-- `scope` lists the source root of every module, for example each `src/main/java`. There is no default. A class is measured when its package path and source file name name a file under one of these roots.
-- `coverage` lists the JaCoCo XML report of every module. There is no default. The `--coverage` flag of `measure` overrides it, and names JaCoCo XML files.
+- `scope` lists the source root of every module, for example each `src/main/java`. There is no default. Every entry must be an existing directory, or the run fails with the same message as for TypeScript. A class is measured when its package path and source file name name a file under one of these roots.
+- `coverage` lists the JaCoCo XML report of every module. There is no default. The `--coverage` flag of `measure` overrides the whole list, and names JaCoCo XML files. When it names a different list, `measure` prints `--coverage overrides the configured coverage: reading <n> reports from the flag, <m> configured reports ignored` first. `check` and `baseline` always read `coverage`.
 - `extensions` defaults to `[".java"]`. `exclude` is matched against the repo-relative path of the source file. The built-in TypeScript exclude does not apply. `anchors` is not used.
 - `threshold` works as for TypeScript. The example uses 5.
 
@@ -186,7 +186,7 @@ JaCoCo lists every method of every class with its complexity and its line and br
 - Every lambda in a method shares one key, `Class#method$lambda`, with no index and no parameters, and each lambda is one row.
 - JaCoCo lists every method, including those of classes no test loads, so `crap/unmatched.tsv` stays empty.
 
-A class is skipped, and counted, when its source file name does not end in a configured extension, when it has no source file name (compiled without debug information), when no file under any `scope` root matches its package and source file name (generated code is usually here), or when the matching file is matched by `exclude`. Each run prints one line before the summary line:
+A class is skipped, and counted, when its source file name does not end in a configured extension, when it has no source file name (compiled without debug information), when no file under any `scope` root matches its package and source file name (generated code is usually here), or when the matching file is matched by `exclude`. Each run prints one line before the summary line (the action also shows it in the job summary when at least one class was skipped):
 
     Classes skipped: 1 (0 not-Java, 0 no source file name, 1 source not found under any scope root, 0 excluded)
 

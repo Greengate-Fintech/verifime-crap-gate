@@ -12,6 +12,8 @@ Score impact: neutral
 - `language` was an unknown key in 1.1.0, so a config that set it was rejected as `unknown key "language"`. It is now accepted.
 - Two new config errors: `key "language" must be "typescript" or "java"`, and `key "scope" is required when "language" is "java"` (the same for `coverage`).
 - For Java, each `measure` prints `Classes skipped: <n> (...)` before the summary line, with the number of classes left out and why.
+- For Java, a `scope` entry that is not an existing directory fails the run with the message TypeScript already uses (`key "scope" entry ... is not an existing directory`), so a typo cannot hide a module.
+- For Java, `measure --coverage` prints `--coverage overrides the configured coverage: ...` first when the flag names a different list than the config. The action's job summary shows the `Classes skipped` line when a class was skipped.
 - A Java section in the README: Gradle and Maven setup and the known limits.
 
 ### Known limits
