@@ -1,6 +1,6 @@
 import { appendFileSync, statSync } from 'fs'
 import path from 'path'
-import { escapeProperty, runCli } from './cli'
+import { escapeProperty, isSkippedNote, runCli } from './cli'
 import type { Io } from './cli'
 
 // The GitHub Action entry. It reads the action inputs from the environment, runs the CLI in the
@@ -94,9 +94,13 @@ const inlineCode = (text: string): string => {
   return `${ticks} ${text} ${ticks}`
 }
 
-/** The Markdown job summary: mode, result, the summary line and, on failure, the CLI's messages. */
-export const jobSummary = (mode: string, result: ActionResult, errors: readonly string[]): string => {
-  const head = `### CRAP gate: ${mode}\n\nResult: ${result.code === 0 ? 'pass' : 'fail'}\n\n${inlineCode(result.summary)}\n`
+/**
+ * The Markdown job summary: mode, result, the summary line, any notes (Java: the classes skipped)
+ * and, on failure, the CLI's messages.
+ */
+export const jobSummary = (mode: string, result: ActionResult, errors: readonly string[], notes: readonly string[] = []): string => {
+  const noteBlock = notes.map((note) => `\n${inlineCode(note)}\n`).join('')
+  const head = `### CRAP gate: ${mode}\n\nResult: ${result.code === 0 ? 'pass' : 'fail'}\n\n${inlineCode(result.summary)}\n${noteBlock}`
   // Annotation lines repeat a message in workflow-command form, so they stay out of the summary.
   const all = errors.filter((line) => !isAnnotation(line))
   const shown = all.slice(0, MAX_SUMMARY_PROBLEMS)
@@ -117,14 +121,20 @@ const appendTo = (file: string, name: string, text: string): void => {
 }
 
 /** Appends to the runner's output and summary files, when it set them. A write failure names the file. */
-const record = (env: Env, mode: string, result: ActionResult, errors: readonly string[]): void => {
+const record = (env: Env, mode: string, result: ActionResult, lines: CapturedLines): void => {
   if (env.GITHUB_OUTPUT) appendTo(env.GITHUB_OUTPUT, 'GITHUB_OUTPUT', `summary=${singleLine(result.summary)}\n`)
-  if (env.GITHUB_STEP_SUMMARY) appendTo(env.GITHUB_STEP_SUMMARY, 'GITHUB_STEP_SUMMARY', jobSummary(mode, result, errors))
+  const notes = lines.logs.filter(isSkippedNote)
+  if (env.GITHUB_STEP_SUMMARY) appendTo(env.GITHUB_STEP_SUMMARY, 'GITHUB_STEP_SUMMARY', jobSummary(mode, result, lines.errors, notes))
+}
+
+interface CapturedLines {
+  logs: string[]
+  errors: string[]
 }
 
 interface Capture {
   io: Io
-  lines: () => { logs: string[]; errors: string[] }
+  lines: () => CapturedLines
 }
 
 /** Forwards every line to `io` (an error line through `forward`), and keeps the lines as the CLI wrote them. */
@@ -207,9 +217,9 @@ export const runAction = async (env: Env, cwd: string, io: Io): Promise<ActionRe
   const seen = capture(io, prefixAnnotation(prefix))
   if ('inputs' in parsed) ignoredInputs(env, parsed.inputs).forEach((what) => io.log(`::warning::Input ${what} is ignored`))
   const code = 'error' in parsed ? failed(parsed.error, seen.io) : await execute(parsed.inputs, env, cwd, seen.io)
-  const { logs, errors } = seen.lines()
-  const result = { code, summary: summaryOf(code, logs, errors) }
-  record(env, 'inputs' in parsed ? parsed.inputs.mode : 'unknown', result, errors)
+  const lines = seen.lines()
+  const result = { code, summary: summaryOf(code, lines.logs, lines.errors) }
+  record(env, 'inputs' in parsed ? parsed.inputs.mode : 'unknown', result, lines)
   return result
 }
 

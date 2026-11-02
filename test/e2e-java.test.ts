@@ -154,3 +154,33 @@ describe('Java e2e: the bundle and the action', () => {
     expect(result).toEqual({ code: 0, summary: MEASURE_LINE })
   })
 })
+
+describe('A2: the job summary shows the classes skipped', () => {
+  const summaryFile = (root: string): string => path.join(root, 'gh-summary.md')
+  const act = async (root: string, inputs: Record<string, string>) => {
+    const out = makeIo()
+    const result = await runAction({ GITHUB_STEP_SUMMARY: summaryFile(root), GITHUB_OUTPUT: path.join(root, 'gh-output'), ...inputs }, root, out.io)
+    return { result, summary: read(root, 'gh-summary.md'), output: read(root, 'gh-output') }
+  }
+  const SKIPPED = 'Classes skipped: 1 (0 not-Java, 0 no source file name, 1 source not found under any scope root, 0 excluded)'
+
+  it('adds the line on a green run, and the summary output stays the measure line', async () => {
+    const { result, summary, output } = await act(copyProject(), { INPUT_MODE: 'measure' })
+    expect(result.summary).toBe(MEASURE_LINE)
+    expect(output).toBe(`summary=${MEASURE_LINE}\n`)
+    expect(summary).toBe(`### CRAP gate: measure\n\nResult: pass\n\n\`${MEASURE_LINE}\`\n\n\`${SKIPPED}\`\n`)
+  })
+
+  it('adds the line on a green check, after the pass line', async () => {
+    const { result, summary } = await act(copyProject(), { INPUT_MODE: 'check' })
+    expect(result.summary).toBe('CRAP ratchet: pass (3 frozen, 6 functions measured)')
+    expect(summary).toContain(`\`${SKIPPED}\``)
+  })
+
+  it('adds nothing when no class was skipped', async () => {
+    const root = copyProject()
+    writeFileIn(root, WEB, read(root, WEB).replace(/<class name="com\/example\/web\/GeneratedClient"[\s\S]*?<\/class>/, ''))
+    const { summary } = await act(root, { INPUT_MODE: 'measure' })
+    expect(summary).not.toContain('Classes skipped')
+  })
+})
