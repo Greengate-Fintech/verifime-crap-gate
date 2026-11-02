@@ -605,7 +605,7 @@ describe('a report that scores nothing', () => {
   it('is a problem for a wrong extensions setting, and the message shows it', () => {
     const m = synthetic(report(foo(method('name="a" desc="()V" line="1"'))), [SOURCE], { ...CONFIG, extensions: ['.kt'] })
     expect(m.measurement.problems.map((p) => p.message)).toEqual([
-      'Scored no methods: 1 classes skipped (1 not-Java, 0 no source file name, 0 source not found under any scope root, 0 excluded); check "scope" and "extensions"',
+      'Scored no methods: 1 class skipped (1 not-Java, 0 no source file name, 0 source not found under any scope root, 0 excluded); check "scope" and "extensions"',
     ])
   })
 
@@ -614,6 +614,13 @@ describe('a report that scores nothing', () => {
     expect(m.measurement.problems).toEqual([])
     expect(m.outOfScope).toBe(2)
     expect(m.skipped).toEqual({ notJava: 1, noSourceFile: 0, notFound: 1, excluded: 0 })
+  })
+
+  it('reports one problem for a report whose only class sits outside a package', () => {
+    const m = synthetic('<report name="t"><class name="com/example/Foo" sourcefilename="Foo.java"/></report>')
+    expect(m.measurement.problems.map((p) => p.message)).toEqual([
+      'Malformed JaCoCo report: a class is outside a package',
+    ])
   })
 
   it('names only the report that scores nothing', () => {

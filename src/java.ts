@@ -71,7 +71,7 @@ interface XmlGroup {
   group?: XmlGroup[]
   package?: XmlPackage[]
   /** A class here is outside a package: malformed. */
-  class?: unknown
+  class?: unknown[]
 }
 
 const ARRAY_TAGS = new Set(['group', 'package', 'class', 'method', 'counter'])
@@ -400,8 +400,10 @@ const measureReport = (run: Run, reportPath: string): void => {
   const parsed = 'xml' in read ? parseReport(read.xml) : read.message
   if (typeof parsed === 'string') return problem(run, { file: reportPath, message: parsed })
   const groups = groupsOf(parsed)
-  if (groups.some((g) => g.class !== undefined)) malformed(run, reportPath, 'a class is outside a package')
-  run.tally = { classes: 0, skipped: noneSkipped() }
+  // A stray class counts as a class the report lists: it is malformed, not a reason to call the report empty.
+  const stray = groups.reduce((n, g) => n + (g.class?.length ?? 0), 0)
+  if (stray > 0) malformed(run, reportPath, 'a class is outside a package')
+  run.tally = { classes: stray, skipped: noneSkipped() }
   for (const pkg of groups.flatMap((g) => g.package ?? [])) measurePackage(run, reportPath, pkg)
   const empty = emptyReport(run.tally)
   if (empty !== null) problem(run, { file: reportPath, message: empty })
@@ -416,7 +418,7 @@ const emptyReport = (tally: ReportTally): string | null => {
   const s = tally.skipped
   const total = s.notJava + s.noSourceFile + s.notFound + s.excluded
   if (total < tally.classes) return null
-  return `Scored no methods: ${total} classes skipped (${s.notJava} not-Java, ${s.noSourceFile} no source file name, ${s.notFound} source not found under any scope root, ${s.excluded} excluded); check "scope" and "extensions"`
+  return `Scored no methods: ${total} ${total === 1 ? 'class' : 'classes'} skipped (${s.notJava} not-Java, ${s.noSourceFile} no source file name, ${s.notFound} source not found under any scope root, ${s.excluded} excluded); check "scope" and "extensions"`
 }
 
 /**
