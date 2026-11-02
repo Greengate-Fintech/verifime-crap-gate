@@ -105,6 +105,11 @@ const PRIMITIVES: Record<string, string> = {
 
 const TYPE = String.raw`\[*(?:[ZBCSIJFD]|L[^;]+;)`
 const DESCRIPTOR = new RegExp(String.raw`^\(((?:${TYPE})*)\)(?:V|${TYPE})$`)
+// A Map, not an object: a method named `toString` or `constructor` must not find a prototype member.
+const SPECIAL_KINDS: ReadonlyMap<string, string> = new Map([
+  ['<init>', 'Constructor'],
+  ['<clinit>', 'Static initializer'],
+])
 const LAMBDA = /^lambda\$(.+)\$\d+$/
 
 const simpleClass = (internalName: string): string =>
@@ -134,8 +139,7 @@ const methodName = (cls: string, name: string, params: string[]): MethodName | n
     const enclosing = LAMBDA.exec(name)?.[1]
     return enclosing === undefined ? null : { kind: 'Lambda', symbol: `${cls}#${enclosing}$lambda` }
   }
-  const kinds: Record<string, string> = { '<init>': 'Constructor', '<clinit>': 'Static initializer' }
-  return { kind: kinds[name] ?? 'Method', symbol: `${cls}#${name}(${params.join(',')})` }
+  return { kind: SPECIAL_KINDS.get(name) ?? 'Method', symbol: `${cls}#${name}(${params.join(',')})` }
 }
 
 // ---------------------------------------------------------------------------------------

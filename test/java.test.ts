@@ -91,6 +91,15 @@ describe('symbols and kinds', () => {
     expect(one(m, 'Pricing#apply(Map.Entry[])').kind).toBe('Method')
   })
 
+  it.each(['toString', 'constructor', 'hasOwnProperty', 'valueOf', '__proto__'])(
+    'gives a method named %s the kind Method',
+    (name) => {
+      const m = synthetic(report(foo(method(`name="${name}" desc="()V" line="1"`))))
+      expect(m.measurement.problems).toEqual([])
+      expect(one(m, `Foo#${name}()`).kind).toBe('Method')
+    },
+  )
+
   it('renders every primitive, object and array parameter as a simple name', () => {
     const m = run(['report.xml'])
     const all = one(m, 'Pricing#everything(boolean,byte,char,short,int,long,float,double,long[][])')
