@@ -22,6 +22,7 @@ import {
   type Violation,
 } from './ratchet'
 import { roundTo } from './score'
+import { assertScopeExists } from './scope'
 import type {
   CrapReport,
   CrapSummary,
@@ -183,7 +184,10 @@ const eslintInput = (opts: MeasureOptions): EslintFileResult[] => {
 /** The Java measure reads JaCoCo XML reports and needs neither ESLint nor Istanbul coverage. */
 const computeJava = (opts: MeasureOptions, config: CrapConfig): Outcome => {
   assertCoverageGiven(opts.coveragePaths)
-  const { measurement, skipped } = measureJava(config, realpathSync(opts.repoRoot), opts.coveragePaths)
+  const repoRoot = realpathSync(opts.repoRoot)
+  // A root that is not a directory would hide its classes as "source not found", and a baseline run would delete their rows.
+  assertScopeExists(repoRoot, config)
+  const { measurement, skipped } = measureJava(config, repoRoot, opts.coveragePaths)
   return { ...resolveUnmatched(measurement, opts), skipped }
 }
 

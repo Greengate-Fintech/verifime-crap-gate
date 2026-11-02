@@ -19,6 +19,8 @@ const javaProject = (): string => {
   return root
 }
 
+const read = (root: string, rel: string): string => readFileSync(path.join(root, rel), 'utf8')
+
 const run = async (root: string, ...argv: string[]) => {
   const out = makeIo()
   const code = await inDirectory(root, () => runCli(argv, {}, root, out.io))
@@ -117,5 +119,56 @@ describe('the TypeScript path is unchanged', () => {
     const r = await run(root, 'measure')
     expect(lintScope).toHaveBeenCalledTimes(1)
     expect(r.logs.some((l) => l.startsWith('Classes skipped'))).toBe(false)
+  })
+})
+
+describe('A1: a scope root that is not an existing directory fails, as for TypeScript', () => {
+  const withScope = (scope: string[]): string => {
+    const root = javaProject()
+    const config = JSON.parse(readFileSync(path.join(root, 'crap/config.json'), 'utf8'))
+    writeFileIn(root, 'crap/config.json', JSON.stringify({ ...config, scope }))
+    return root
+  }
+  const TYPO = ['core/src/main/java', 'web/src/main/jav']
+  const MESSAGE = 'Invalid crap/config.json: key "scope" entry "web/src/main/jav" is not an existing directory'
+
+  it.each(['measure', 'check', 'baseline'])('%s exits 1 with the TypeScript message and prints no summary', async (command) => {
+    const r = await run(withScope(TYPO), command)
+    expect(r).toEqual({ code: 1, logs: [], errors: [MESSAGE] })
+  })
+
+  /** One aggregated report that lists both modules, as a multi-module JaCoCo report does. */
+  const aggregated = (scope: string[]): string => {
+    const root = withScope(scope)
+    const core = read(root, 'core/build/reports/jacoco/test/jacocoTestReport.xml')
+    const web = read(root, 'web/build/reports/jacoco/test/jacocoTestReport.xml')
+    const webPackage = web.slice(web.indexOf('<package'), web.indexOf('</package>') + '</package>'.length)
+    writeFileIn(root, 'all/jacoco.xml', core.replace('</report>', `${webPackage}</report>`))
+    const config = JSON.parse(read(root, 'crap/config.json'))
+    writeFileIn(root, 'crap/config.json', JSON.stringify({ ...config, coverage: ['all/jacoco.xml'] }))
+    return root
+  }
+
+  it('baseline leaves the existing baseline and unmatched files untouched when a root hides a module of one report', async () => {
+    const root = aggregated(TYPO)
+    const before = [read(root, 'crap/baseline.tsv'), read(root, 'crap/unmatched.tsv')]
+    const r = await run(root, 'baseline', '--allow-growth')
+    expect(r.errors).toEqual([MESSAGE])
+    expect([read(root, 'crap/baseline.tsv'), read(root, 'crap/unmatched.tsv')]).toEqual(before)
+  })
+
+  it('the same aggregated report passes with the right roots', async () => {
+    expect((await run(aggregated(['core/src/main/java', 'web/src/main/java']), 'check')).code).toBe(0)
+  })
+
+  it('fails for a scope entry that is a file', async () => {
+    const r = await run(withScope(['core/src/main/java', 'crap/config.json']), 'measure')
+    expect(r.errors).toEqual(['Invalid crap/config.json: key "scope" entry "crap/config.json" is not an existing directory'])
+  })
+
+  it('still skips and counts a class whose source is under no existing root', async () => {
+    const r = await run(javaProject(), 'measure')
+    expect(r.code).toBe(0)
+    expect(r.logs[0]).toMatch(/^Classes skipped: 1 /)
   })
 })
