@@ -382,21 +382,22 @@ const measurePackage = (run: Run, report: string, pkg: XmlPackage): void => {
   for (const cls of pkg.class ?? []) measureClass(run, report, name, cls)
 }
 
-const measureReport = (run: Run, reportPath: string): void => {
+/** The text of a report, or the problem that stops it being read. */
+const readReport = (run: Run, reportPath: string): { xml: string } | { message: string } => {
   const absolute = path.resolve(run.repoRoot, reportPath)
   const listedAs = run.listed.get(absolute)
-  if (listedAs !== undefined) {
-    return problem(run, { file: reportPath, message: `Report listed more than once: same file as ${listedAs}` })
-  }
+  if (listedAs !== undefined) return { message: `Report listed more than once: same file as ${listedAs}` }
   run.listed.set(absolute, reportPath)
-  let xml: string
   try {
-    xml = run.fs.readFile(absolute)
+    return { xml: run.fs.readFile(absolute) }
   } catch (cause) {
-    const code = (cause as NodeJS.ErrnoException).code ?? 'unknown error'
-    return problem(run, { file: reportPath, message: `Cannot read the JaCoCo report (${code})` })
+    return { message: `Cannot read the JaCoCo report (${(cause as NodeJS.ErrnoException).code ?? 'unknown error'})` }
   }
-  const parsed = parseReport(xml)
+}
+
+const measureReport = (run: Run, reportPath: string): void => {
+  const read = readReport(run, reportPath)
+  const parsed = 'xml' in read ? parseReport(read.xml) : read.message
   if (typeof parsed === 'string') return problem(run, { file: reportPath, message: parsed })
   const groups = groupsOf(parsed)
   if (groups.some((g) => g.class !== undefined)) malformed(run, reportPath, 'a class is outside a package')
