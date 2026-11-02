@@ -129,6 +129,10 @@ const SPECIAL_KINDS: ReadonlyMap<string, string> = new Map([
   ['<init>', 'Constructor'],
   ['<clinit>', 'Static initializer'],
 ])
+// JaCoCo writes a relative package path with `/` and a bare source file name. Anything else could
+// point a lookup outside the scope roots.
+const UNSAFE_PACKAGE = /^\/|\\|\.\./
+const UNSAFE_FILE_NAME = /[/\\]|\.\./
 const LAMBDA = /^lambda\$(.+)\$\d+$/
 
 const simpleClass = (internalName: string): string =>
@@ -356,7 +360,11 @@ const measureMethods = (run: Run, where: Located, cls: XmlClass): void => {
 const measureClass = (run: Run, report: string, pkg: string, cls: XmlClass): void => {
   const classPath = cls['@_name']
   if (classPath === undefined) return malformed(run, report, 'a class has no name')
-  const source = sourceOf(run, report, pkg, cls['@_sourcefilename'])
+  const sourceFile = cls['@_sourcefilename']
+  if (sourceFile !== undefined && UNSAFE_FILE_NAME.test(sourceFile)) {
+    return malformed(run, report, `the class ${classPath} has a source file name that is not a bare file name`)
+  }
+  const source = sourceOf(run, report, pkg, sourceFile)
   if ('skipped' in source) {
     run.tally.skipped[source.skipped] += 1
     run.skipped[source.skipped] += 1
@@ -369,6 +377,7 @@ const measurePackage = (run: Run, report: string, pkg: XmlPackage): void => {
   const name = pkg['@_name']
   run.tally.classes += (pkg.class ?? []).length
   if (name === undefined) return malformed(run, report, 'a package has no name')
+  if (UNSAFE_PACKAGE.test(name)) return malformed(run, report, `the package "${name}" is not a relative path`)
   for (const cls of pkg.class ?? []) measureClass(run, report, name, cls)
 }
 

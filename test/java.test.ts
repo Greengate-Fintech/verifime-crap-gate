@@ -417,6 +417,31 @@ describe('failing closed', () => {
     ])
   })
 
+  it.each(['../outside', 'com/../outside', 'com\\example', '/com/example'])(
+    'refuses the package name %s, which is not a relative package path',
+    (pkg) => {
+      const m = synthetic(report(foo(method('name="a" desc="()V" line="1"')), pkg), [SOURCE, 'outside/Foo.java', 'Foo.java'])
+      expect(m.measurement.functions).toEqual([])
+      expect(m.measurement.problems).toEqual([
+        { file: 'build/jacoco.xml', message: `Malformed JaCoCo report: the package "${pkg}" is not a relative path` },
+      ])
+    },
+  )
+
+  it.each(['sub/Foo.java', 'sub\\Foo.java', '../Foo.java', 'Foo..java'])(
+    'refuses the source file name %s, which is not a bare file name',
+    (file) => {
+      const m = synthetic(
+        report(foo(method('name="a" desc="()V" line="1"'), `name="com/example/Foo" sourcefilename="${file}"`)),
+        ['src/main/java/com/example/sub/Foo.java', 'src/main/java/com/Foo.java', 'src/main/java/com/example/Foo..java'],
+      )
+      expect(m.measurement.functions).toEqual([])
+      expect(m.measurement.problems).toEqual([
+        { file: 'build/jacoco.xml', message: 'Malformed JaCoCo report: the class com/example/Foo has a source file name that is not a bare file name' },
+      ])
+    },
+  )
+
   it('skips a class with no sourcefilename as out of scope, counted as having no source file name', () => {
     const noSource = foo(method('name="a" desc="()V" line="1"'), 'name="com/example/Bar"')
     const m = synthetic(report(noSource + foo(method('name="b" desc="()V" line="1"'))))
