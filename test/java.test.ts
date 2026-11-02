@@ -101,13 +101,17 @@ describe('symbols and kinds', () => {
     ['lambda$lambda$lambda$main$0$1$2', 'Foo#main$lambda'],
     // javac 8 names a lambda inside a lambda "null": the name chain gives no enclosing method, so the key is null$lambda.
     ['lambda$null$1', 'Foo#null$lambda'],
+    // A method whose own name starts with "lambda" is a real enclosing method, not a nested lambda.
+    ['lambda$lambdaHandler$0', 'Foo#lambdaHandler$lambda'],
+    // "lambda$" inside the enclosing name does not make it a nested lambda; only a leading "lambda$" does.
+    ['lambda$my$lambda$x$0', 'Foo#my$lambda$x$lambda'],
   ])('keys the lambda %s as %s', (name, symbol) => {
     const m = synthetic(report(foo(method(`name="${name}" desc="()V" line="3"`))))
     expect(m.measurement.problems).toEqual([])
     expect(m.measurement.functions.map((f) => [f.symbol, f.kind])).toEqual([[symbol, 'Lambda']])
   })
 
-  it.each(['lambda$run$x', 'lambda$$0', 'lambda$run$0x', 'lambda$run', 'lambda$lambda$foo$1'])(
+  it.each(['lambda$run$x', 'lambda$$0', 'lambda$run$0x', 'lambda$run', 'lambda$run$', 'lambda$lambda$foo$1'])(
     'reports the malformed lambda name %s',
     (name) => {
       const m = synthetic(report(foo(method(`name="${name}" desc="()V" line="3"`))))
@@ -351,6 +355,28 @@ describe('failing closed', () => {
     ])
   })
 
+  it('reports a lambda repeated in a second report', () => {
+    const lambda = report(foo(method('name="lambda$run$0" desc="()V" line="5"')))
+    const fs: JavaFileSystem = { readFile: () => lambda, fileExists: (abs) => abs === `${REPO}/${SOURCE}` }
+    const m = measureJava(CONFIG, REPO, ['a.xml', 'b.xml'], fs)
+    expect(m.measurement.functions).toHaveLength(1)
+    expect(m.measurement.problems).toEqual([
+      { file: SOURCE, line: 5, message: 'Reported twice: Foo#run$lambda is in a.xml and in b.xml' },
+    ])
+  })
+
+  it.each([
+    ['a constructor', '<init>', 'Foo#<init>()'],
+    ['a static initializer', '<clinit>', 'Foo#<clinit>()'],
+  ])('reports %s repeated inside one report', (_label, name, symbol) => {
+    const twice = method(`name="${name}" desc="()V" line="5"`) + method(`name="${name}" desc="()V" line="5"`)
+    const m = synthetic(report(foo(twice)))
+    expect(m.measurement.functions).toHaveLength(1)
+    expect(m.measurement.problems.map((p) => p.message)).toEqual([
+      `Reported twice: ${symbol} is in build/jacoco.xml and in build/jacoco.xml`,
+    ])
+  })
+
   it('reports the same path listed twice, and reads it once', () => {
     const reads: string[] = []
     const fs: JavaFileSystem = {
@@ -519,6 +545,22 @@ describe('failing closed', () => {
     ])
   })
 
+  it.each([
+    ['com/my-app/v2', 'Foo.java'],
+    ['com/2024/x1', 'Foo.java'],
+    ['com/ex$ample', 'Foo.java'],
+    ['com/a.b', 'Foo.java'],
+    ['com/example', 'Foo$Bar.java'],
+    ['com/example', 'My.Foo.java'],
+    ['com/example', 'My-Foo.java'],
+    ['com/example', '.Foo.java'],
+  ])('measures the legal names in package %s with source file %s', (pkg, file) => {
+    const cls = foo(method('name="a" desc="()V" line="1"'), `name="${pkg}/Foo" sourcefilename="${file}"`)
+    const m = synthetic(report(cls, pkg), [`src/main/java/${pkg}/${file}`])
+    expect(m.measurement.problems).toEqual([])
+    expect(m.measurement.functions.map((f) => f.file)).toEqual([`src/main/java/${pkg}/${file}`])
+  })
+
   it.each(['../outside', 'com/../outside', 'com\\example', '/com/example'])(
     'refuses the package name %s, which is not a relative package path',
     (pkg) => {
@@ -602,6 +644,16 @@ describe('a report that scores nothing', () => {
     expect(m.skipped).toEqual({ notJava: 1, noSourceFile: 1, notFound: 1, excluded: 1 })
   })
 
+  it('reports each skipped count in its own slot', () => {
+    const gone = (n: number): string =>
+      foo(method('name="a" desc="()V" line="1"'), `name="com/example/Gone${n}" sourcefilename="Gone${n}.java"`)
+    const bare = (n: number): string => foo(method('name="a" desc="()V" line="1"'), `name="com/example/Bare${n}"`)
+    const m = synthetic(report(gone(1) + gone(2) + gone(3) + KOTLIN + bare(1) + bare(2)))
+    expect(m.measurement.problems.map((p) => p.message)).toEqual([
+      'Scored no methods: 6 classes skipped (1 not-Java, 2 no source file name, 3 source not found under any scope root, 0 excluded); check "scope" and "extensions"',
+    ])
+  })
+
   it('is a problem for a wrong extensions setting, and the message shows it', () => {
     const m = synthetic(report(foo(method('name="a" desc="()V" line="1"'))), [SOURCE], { ...CONFIG, extensions: ['.kt'] })
     expect(m.measurement.problems.map((p) => p.message)).toEqual([
@@ -614,6 +666,17 @@ describe('a report that scores nothing', () => {
     expect(m.measurement.problems).toEqual([])
     expect(m.outOfScope).toBe(2)
     expect(m.skipped).toEqual({ notJava: 1, noSourceFile: 0, notFound: 1, excluded: 0 })
+  })
+
+  it('flags an empty report listed after a scored one', () => {
+    const fs: JavaFileSystem = {
+      readFile: (abs) => (abs.endsWith('ok.xml') ? report(foo(method('name="ok" desc="()V" line="1"'))) : '<report/>'),
+      fileExists: () => true,
+    }
+    const m = measureJava(CONFIG, REPO, ['ok.xml', 'empty.xml'], fs)
+    expect(m.measurement.problems).toEqual([
+      { file: 'empty.xml', message: 'Scored no methods: the report lists no classes' },
+    ])
   })
 
   it('reports one problem for a report whose only class sits outside a package', () => {
