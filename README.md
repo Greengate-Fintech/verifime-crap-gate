@@ -173,6 +173,8 @@ Set `"language": "java"` in `crap/config.json` to score Java methods. The gate t
 - `extensions` defaults to `[".java"]`. `exclude` is matched against the repo-relative path of the source file. The built-in TypeScript exclude does not apply. `anchors` is not used.
 - `threshold` works as for TypeScript. The example uses 5.
 
+The advice in a failing check's messages says to run `npm run crap:baseline`, which is a script in a Node repository. A Java repository has no such script: run the `baseline` mode through the action, or through `npx` (see Use as a CLI), to regenerate `crap/baseline.tsv`.
+
 ### How a method is scored
 
 JaCoCo lists every method of every class with its complexity and its line and branch counters, so the gate parses no source.
@@ -216,7 +218,19 @@ Run `./gradlew test` (or `jacocoTestReport` after `test`) before the gate, so th
 
 A Quarkus test module may show no coverage with the plain `jacoco` plugin, because the tests run the application in their own class loader. Add the Quarkus JaCoCo extension to that module's test dependencies and list the report it writes in `coverage`.
 
-With Maven, the `jacoco-maven-plugin` with its `prepare-agent` and `report` goals writes `target/site/jacoco/jacoco.xml` after `mvn test`.
+With Maven, the `jacoco-maven-plugin` with its `prepare-agent` and `report` goals writes its HTML, XML and CSV reports into `target/site/jacoco` (the defaults). The `report` goal binds to the `verify` phase by default, so the XML report appears after `mvn verify`, not after `mvn test`. To get it after `mvn test`, bind the goal to the `test` phase:
+
+```xml
+<execution>
+  <id>report</id>
+  <phase>test</phase>
+  <goals>
+    <goal>report</goal>
+  </goals>
+</execution>
+```
+
+List the XML file from `target/site/jacoco` of every module in `coverage`.
 
 ### Known limits
 

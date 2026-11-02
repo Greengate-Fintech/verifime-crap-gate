@@ -9,6 +9,7 @@ Score impact: neutral
 ### Added
 
 - Java support. A new config key `language` takes `"typescript"` (the default) or `"java"`. With `"java"`, the gate scores Java methods from JaCoCo XML reports and does not run ESLint. `scope` and `coverage` must be set (they have no Java default), `extensions` defaults to `[".java"]`, and `anchors` is not used. A config with no `language` key parses to exactly what it did in 1.1.0, so no TypeScript score, message or exit code changes.
+- `language` was an unknown key in 1.1.0, so a config that set it was rejected as `unknown key "language"`. It is now accepted.
 - Two new config errors: `key "language" must be "typescript" or "java"`, and `key "scope" is required when "language" is "java"` (the same for `coverage`).
 - For Java, each `measure` prints `Classes skipped: <n> (...)` before the summary line, with the number of classes left out and why.
 - A Java section in the README: Gradle and Maven setup and the known limits.
