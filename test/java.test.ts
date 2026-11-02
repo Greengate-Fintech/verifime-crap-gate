@@ -136,7 +136,7 @@ describe('symbols and kinds', () => {
   it('renders every primitive, object and array parameter as a simple name', () => {
     const m = run(['report.xml'])
     const all = one(m, 'Pricing#everything(boolean,byte,char,short,int,long,float,double,long[][])')
-    expect(all.line).toBe(0)
+    expect(all.line).toBe(70)
   })
 })
 
@@ -390,6 +390,7 @@ describe('failing closed', () => {
     ['a method with no name', method('desc="()V" line="1"'), 'has no name or desc'],
     ['a method with no desc', method('name="a" line="1"'), 'has no name or desc'],
     ['a method with an invalid desc', method('name="a" desc="(I" line="1"'), 'has an invalid desc'],
+    ['a method with no line', method('name="a" desc="()V"'), 'has no line'],
     ['a method with an invalid line', method('name="a" desc="()V" line="x"'), 'has an invalid line'],
     ['a counter with a bad number', method('name="a" desc="()V" line="1"', '<counter type="LINE" missed="-1" covered="1"/>'), 'has an invalid or repeated counter'],
     ['a counter with no type', method('name="a" desc="()V" line="1"', '<counter missed="0" covered="1"/>'), 'has an invalid or repeated counter'],

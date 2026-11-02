@@ -51,7 +51,7 @@
             <counter type="LINE" missed="1" covered="2"/>
             <counter type="COMPLEXITY" missed="20" covered="10"/>
           </method>
-          <method name="everything" desc="(ZBCSIJFD[[J)V">
+          <method name="everything" desc="(ZBCSIJFD[[J)V" line="70">
             <counter type="LINE" missed="0" covered="1"/>
             <counter type="COMPLEXITY" missed="0" covered="1"/>
           </method>

@@ -295,10 +295,11 @@ interface MethodAttributes {
 
 /** The method's name, parameter types and line, or why they are not usable. */
 const readAttributes = (m: XmlMethod): MethodAttributes | string => {
-  const [name, desc, lineText] = [m['@_name'], m['@_desc'], m['@_line'] ?? '0']
+  const [name, desc, lineText] = [m['@_name'], m['@_desc'], m['@_line']]
   if (name === undefined || desc === undefined) return 'has no name or desc'
   const params = parameterTypes(desc)
   if (params === null) return 'has an invalid desc'
+  if (lineText === undefined) return 'has no line'
   return COUNT.test(lineText) ? { name, params, line: Number(lineText) } : 'has an invalid line'
 }
 
