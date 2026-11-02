@@ -107,4 +107,10 @@ describe('language: java', () => {
   it('does not require scope or coverage for TypeScript', () => {
     expect(() => parseConfig('{"language": "typescript", "threshold": 4}')).not.toThrow()
   })
+
+  it('reports an invalid key before a missing required key', () => {
+    expect(failure('{"language": "java", "threshold": -1}')).toBe(
+      `Invalid ${CONFIG_DISPLAY}: key "threshold" must be a number greater than 0`,
+    )
+  })
 })

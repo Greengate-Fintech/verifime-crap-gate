@@ -1,11 +1,12 @@
-import { cpSync, existsSync, readFileSync } from 'fs'
+import { cpSync, existsSync, mkdirSync, readFileSync, symlinkSync } from 'fs'
 import path from 'path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { runCli } from '../src/cli'
+import { runCli, runMeasure } from '../src/cli'
 import { inDirectory, makeIo, tempRoot, writeFileIn } from './helpers/sandbox'
 
-// ESLint must not run for Java: the lint boundary fails the test if the Java path reaches it.
+// ESLint must not run for Java: the lint boundary throws, so a Java run that reached it would exit 1.
 const lintScope = vi.hoisted(() => vi.fn(async (): Promise<never[]> => []))
+const ESLINT_MUST_NOT_RUN = 'ESLint must not run for Java'
 vi.mock('../src/eslint', () => ({ lintScope }))
 
 const FIXTURE = path.join(__dirname, 'e2e', 'java-project')
@@ -28,22 +29,16 @@ const run = async (root: string, ...argv: string[]) => {
 }
 
 beforeEach(() => {
-  lintScope.mockClear()
+  lintScope.mockReset()
+  lintScope.mockRejectedValue(new Error(ESLINT_MUST_NOT_RUN))
 })
 
 describe('the Java path', () => {
-  it('measure never runs ESLint, and needs no node toolchain in the project', async () => {
-    const root = javaProject()
-    const r = await run(root, 'measure')
+  it.each(['measure', 'check', 'baseline'])('%s succeeds although the ESLint boundary throws, and never calls it', async (command) => {
+    const r = await run(javaProject(), command)
+    expect(r.errors).toEqual([])
     expect(r.code).toBe(0)
-    expect(lintScope).not.toHaveBeenCalled()
-    expect(existsSync(path.join(root, 'node_modules'))).toBe(false)
-    expect(existsSync(path.join(root, 'package.json'))).toBe(false)
-  })
-
-  it.each(['check', 'baseline'])('%s never runs ESLint', async (command) => {
-    const root = javaProject()
-    expect((await run(root, command)).code).toBe(0)
+    expect(r.logs).toContain(MEASURE_LINE)
     expect(lintScope).not.toHaveBeenCalled()
   })
 
@@ -100,7 +95,6 @@ describe('the Java path', () => {
 
   it('fails with the TypeScript message when no coverage file is given to measure', async () => {
     const root = javaProject()
-    const { runMeasure } = await import('../src/cli')
     const out = makeIo()
     const code = runMeasure(
       { eslintPath: '', coveragePaths: [], unmatchedListPath: 'crap/unmatched.tsv', acceptUnmatched: false, outPath: path.join(root, 'out.json'), repoRoot: root, config: { language: 'java', scope: ['core/src/main/java'], anchors: [], extensions: ['.java'], exclude: [], coverage: [], threshold: 5 } },
@@ -113,6 +107,7 @@ describe('the Java path', () => {
 
 describe('the TypeScript path is unchanged', () => {
   it('still runs ESLint, and prints no skipped line', async () => {
+    lintScope.mockResolvedValueOnce([])
     const root = tempRoot('crap-ts-cli')
     writeFileIn(root, 'crap/config.json', JSON.stringify({ coverage: ['coverage/coverage-final.json'] }))
     writeFileIn(root, 'coverage/coverage-final.json', '{}')
@@ -206,11 +201,147 @@ describe('A3: --coverage replaces the configured list, and says so', () => {
   })
 
   it('prints nothing for TypeScript, which has always replaced the list silently', async () => {
+    lintScope.mockResolvedValueOnce([])
     const root = tempRoot('crap-ts-flag')
     writeFileIn(root, 'crap/config.json', JSON.stringify({ coverage: ['coverage/coverage-final.json'] }))
     writeFileIn(root, 'coverage/coverage-final.json', '{}')
     writeFileIn(root, 'other.json', '{}')
     const r = await run(root, 'measure', '--coverage', 'other.json')
     expect(r.logs.some((l) => l.startsWith('--coverage'))).toBe(false)
+  })
+})
+
+const CORE_REPORT = 'core/build/reports/jacoco/test/jacocoTestReport.xml'
+const WEB_REPORT = 'web/build/reports/jacoco/test/jacocoTestReport.xml'
+const SCOPE_MESSAGE = 'Scored no methods: 2 classes skipped (0 not-Java, 0 no source file name, 2 source not found under any scope root, 0 excluded); check "scope" and "extensions"'
+
+const withConfig = (root: string, change: Record<string, unknown>): void => {
+  const config = JSON.parse(read(root, 'crap/config.json'))
+  writeFileIn(root, 'crap/config.json', JSON.stringify({ ...config, ...change }))
+}
+
+describe('T3: a Java run where every class is skipped fails', () => {
+  it.each(['measure', 'check', 'baseline'])('%s exits 1 with the no-method problems and "No functions were measured"', async (command) => {
+    const root = javaProject()
+    mkdirSync(path.join(root, 'empty-root'))
+    withConfig(root, { scope: ['empty-root'] })
+    const r = await run(root, command)
+    expect(r).toEqual({
+      code: 1,
+      logs: [
+        'Classes skipped: 4 (0 not-Java, 0 no source file name, 4 source not found under any scope root, 0 excluded)',
+        'CRAP measure: functions=0 over5=0 sumOver5=0.0 unmatched=0',
+      ],
+      errors: [
+        'No functions were measured',
+        `Problem: ${CORE_REPORT} ${SCOPE_MESSAGE}`,
+        `Problem: ${WEB_REPORT} ${SCOPE_MESSAGE}`,
+      ],
+    })
+  })
+})
+
+describe('T4: crap/unmatched.tsv with a Java run', () => {
+  const GHOST = 'core/src/main/java/com/example/core/Pricing.java\tPricing#ghost()\n'
+  const withGhost = (): string => {
+    const root = javaProject()
+    writeFileIn(root, 'crap/unmatched.tsv', `${read(root, 'crap/unmatched.tsv')}${GHOST}`)
+    return root
+  }
+
+  it('check fails on a hand-added entry as a stale unmatched entry, since JaCoCo lists every method', async () => {
+    const r = await run(withGhost(), 'check')
+    expect(r.code).toBe(1)
+    expect(r.errors).toEqual([
+      'Stale unmatched entry: core/src/main/java/com/example/core/Pricing.java#Pricing#ghost(); delete this line from crap/unmatched.tsv, or run npm run crap:baseline',
+    ])
+  })
+
+  it('measure --accept-unmatched passes, marks the report as accepted, and ignores the entry', async () => {
+    const root = withGhost()
+    const r = await run(root, 'measure', '--accept-unmatched')
+    expect(r.code).toBe(0)
+    const report = JSON.parse(read(root, 'coverage/crap-report.json'))
+    expect(report).toMatchObject({ acceptedUnmatched: true, unmatched: [], listedUnmatched: [], staleUnmatched: [] })
+  })
+
+  it('baseline drops the entry and writes an empty unmatched list', async () => {
+    const root = withGhost()
+    const r = await run(root, 'baseline')
+    expect(r.code).toBe(0)
+    expect(r.logs.at(-1)).toBe(`CRAP baseline: wrote 0 unmatched rows to ${path.join('crap', 'unmatched.tsv')}`)
+    expect(read(root, 'crap/unmatched.tsv')).not.toContain('ghost')
+  })
+})
+
+describe('T6: pinned behaviour', () => {
+  it('reports the invalid key before the missing required key (validate, then require)', async () => {
+    const root = tempRoot('crap-java-order')
+    writeFileIn(root, 'crap/config.json', '{"language": "java", "threshold": -1}')
+    const r = await run(root, 'measure')
+    expect(r.errors).toEqual(['Invalid crap/config.json: key "threshold" must be a number greater than 0'])
+  })
+
+  it('counts an excluded class in the skipped total', async () => {
+    const root = javaProject()
+    // The generated class goes, and a Util class beside Pricing is excluded by path, so exactly one class is skipped.
+    writeFileIn(root, WEB_REPORT, read(root, WEB_REPORT).replace(/<class name="com\/example\/web\/GeneratedClient"[\s\S]*?<\/class>/, ''))
+    writeFileIn(root, 'core/src/main/java/com/example/core/Util.java', 'package com.example.core;\n\npublic class Util {\n}\n')
+    writeFileIn(
+      root,
+      CORE_REPORT,
+      read(root, CORE_REPORT).replace(
+        '</package>',
+        '<class name="com/example/core/Util" sourcefilename="Util.java"><method name="&lt;init&gt;" desc="()V" line="3"><counter type="LINE" missed="0" covered="1"/><counter type="COMPLEXITY" missed="0" covered="1"/></method></class></package>',
+      ),
+    )
+    withConfig(root, { exclude: ['/Util\\.java$'] })
+    const r = await run(root, 'measure')
+    expect(r.errors).toEqual([])
+    expect(r.logs).toEqual([
+      'Classes skipped: 1 (0 not-Java, 0 no source file name, 0 source not found under any scope root, 1 excluded)',
+      MEASURE_LINE,
+    ])
+  })
+
+  it('measures through a symlinked repository root', async () => {
+    const real = javaProject()
+    const link = path.join(tempRoot('crap-java-link'), 'link')
+    symlinkSync(real, link)
+    const r = await run(link, 'measure')
+    expect(r.errors).toEqual([])
+    expect(r.logs.at(-1)).toBe(MEASURE_LINE)
+  })
+
+  it('fails with the system error when the repository root does not exist', () => {
+    const missing = path.join(tempRoot('crap-java-gone'), 'gone')
+    const out = makeIo()
+    const code = runMeasure(
+      { eslintPath: '', coveragePaths: ['a.xml'], unmatchedListPath: 'u.tsv', acceptUnmatched: false, outPath: path.join(tempRoot('crap-java-out'), 'r.json'), repoRoot: missing, config: { language: 'java', scope: ['src'], scopeFrom: 'crap/config.json', anchors: [], extensions: ['.java'], exclude: [], coverage: ['a.xml'], threshold: 5 } },
+      out.io,
+    )
+    expect(code).toBe(1)
+    expect(out.errors).toHaveLength(1)
+    // The message of the call that resolves the root (not the later scope check).
+    expect(out.errors[0]).toBe(`ENOENT: no such file or directory, lstat '${missing}'`)
+  })
+
+  it('runMeasure removes an earlier report before a Java measure that fails before it writes one', () => {
+    const root = javaProject()
+    const outPath = path.join(root, 'coverage/crap-report.json')
+    writeFileIn(root, 'coverage/crap-report.json', '{"stale": true}')
+    const out = makeIo()
+    const config = { language: 'java' as const, scope: ['core/src/main/jav'], scopeFrom: 'crap/config.json', anchors: [], extensions: ['.java'], exclude: [], coverage: [CORE_REPORT], threshold: 5 }
+    expect(runMeasure({ eslintPath: '', coveragePaths: [CORE_REPORT], unmatchedListPath: 'crap/unmatched.tsv', acceptUnmatched: false, outPath, repoRoot: root, config }, out.io)).toBe(1)
+    expect(existsSync(outPath)).toBe(false)
+  })
+
+  it('removes an earlier report when the Java measure fails before it writes one', async () => {
+    const root = javaProject()
+    writeFileIn(root, 'coverage/crap-report.json', '{"stale": true}')
+    withConfig(root, { scope: ['core/src/main/java', 'web/src/main/jav'] })
+    const r = await run(root, 'measure')
+    expect(r.code).toBe(1)
+    expect(existsSync(path.join(root, 'coverage/crap-report.json'))).toBe(false)
   })
 })
