@@ -237,6 +237,8 @@ interface Run {
   resolved: Map<string, Resolved>
   /** The report that first produced each file, symbol and line. */
   seen: Map<string, string>
+  /** Each report read so far, by absolute path, with the path it was first given as. */
+  listed: Map<string, string>
 }
 
 const problem = (run: Run, p: MeasureProblem): void => {
@@ -329,7 +331,9 @@ const scoreMethod = (where: Located, m: XmlMethod): FunctionScore | string => {
 const record = (run: Run, where: Located, score: FunctionScore): void => {
   const key = `${score.file}\t${score.symbol}\t${score.line}`
   const first = run.seen.get(key)
-  if (first === undefined || first === where.report) {
+  // Lambdas are the only methods that can repeat a key in one report (javac numbers them).
+  const repeatable = score.kind === 'Lambda' && first === where.report
+  if (first === undefined || repeatable) {
     run.seen.set(key, where.report)
     run.out.functions.push(score)
     return
@@ -369,9 +373,15 @@ const measurePackage = (run: Run, report: string, pkg: XmlPackage): void => {
 }
 
 const measureReport = (run: Run, reportPath: string): void => {
+  const absolute = path.resolve(run.repoRoot, reportPath)
+  const listedAs = run.listed.get(absolute)
+  if (listedAs !== undefined) {
+    return problem(run, { file: reportPath, message: `Report listed more than once: same file as ${listedAs}` })
+  }
+  run.listed.set(absolute, reportPath)
   let xml: string
   try {
-    xml = run.fs.readFile(path.resolve(run.repoRoot, reportPath))
+    xml = run.fs.readFile(absolute)
   } catch (cause) {
     const code = (cause as NodeJS.ErrnoException).code ?? 'unknown error'
     return problem(run, { file: reportPath, message: `Cannot read the JaCoCo report (${code})` })
@@ -418,6 +428,7 @@ export const measureJava = (
     tally: { classes: 0, skipped: noneSkipped() },
     resolved: new Map(),
     seen: new Map(),
+    listed: new Map(),
   }
   for (const report of reports) measureReport(run, report)
   const s = run.skipped

@@ -282,6 +282,36 @@ describe('failing closed', () => {
     ])
   })
 
+  it('reports a method repeated with the same file, symbol and line inside one report', () => {
+    const twice = method('name="a" desc="()V" line="5"') + method('name="a" desc="()V" line="5"')
+    const m = synthetic(report(foo(twice)))
+    expect(m.measurement.functions).toHaveLength(1)
+    expect(m.measurement.problems).toEqual([
+      {
+        file: SOURCE,
+        line: 5,
+        message: 'Reported twice: Foo#a() is in build/jacoco.xml and in build/jacoco.xml',
+      },
+    ])
+  })
+
+  it('reports the same path listed twice, and reads it once', () => {
+    const reads: string[] = []
+    const fs: JavaFileSystem = {
+      readFile: (abs) => {
+        reads.push(abs)
+        return report(foo(method('name="a" desc="()V" line="5"')))
+      },
+      fileExists: (abs) => abs === `${REPO}/${SOURCE}`,
+    }
+    const m = measureJava(CONFIG, REPO, ['build/jacoco.xml', './build/jacoco.xml'], fs)
+    expect(reads).toEqual([`${REPO}/build/jacoco.xml`])
+    expect(m.measurement.functions.map((f) => f.symbol)).toEqual(['Foo#a()'])
+    expect(m.measurement.problems).toEqual([
+      { file: './build/jacoco.xml', message: 'Report listed more than once: same file as build/jacoco.xml' },
+    ])
+  })
+
   it('does not call two lambdas on one line in one report a duplicate', () => {
     const lambdas =
       method('name="lambda$run$0" desc="()V" line="5"') + method('name="lambda$run$1" desc="()V" line="5"')
