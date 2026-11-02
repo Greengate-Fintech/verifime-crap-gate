@@ -172,3 +172,45 @@ describe('A1: a scope root that is not an existing directory fails, as for TypeS
     expect(r.logs[0]).toMatch(/^Classes skipped: 1 /)
   })
 })
+
+describe('A3: --coverage replaces the configured list, and says so', () => {
+  const WEB = 'web/build/reports/jacoco/test/jacocoTestReport.xml'
+  const CORE = 'core/build/reports/jacoco/test/jacocoTestReport.xml'
+  const NOTE = '--coverage overrides the configured coverage: reading 1 report from the flag, 2 configured reports ignored'
+
+  it('prints one line first when the flag names a different list', async () => {
+    const r = await run(javaProject(), 'measure', '--coverage', WEB)
+    expect(r.logs[0]).toBe(NOTE)
+    expect(r.logs.filter((l) => l.startsWith('--coverage'))).toHaveLength(1)
+    expect(r.code).toBe(0)
+  })
+
+  it('counts several flags, and says "report" for one configured report', async () => {
+    const root = javaProject()
+    const config = JSON.parse(read(root, 'crap/config.json'))
+    writeFileIn(root, 'crap/config.json', JSON.stringify({ ...config, coverage: [CORE] }))
+    const r = await run(root, 'measure', '--coverage', WEB, '--coverage', CORE)
+    expect(r.logs[0]).toBe('--coverage overrides the configured coverage: reading 2 reports from the flag, 1 configured report ignored')
+  })
+
+  it('prints nothing when the flag names exactly the configured list', async () => {
+    const r = await run(javaProject(), 'measure', '--coverage', CORE, '--coverage', WEB)
+    expect(r.logs.some((l) => l.startsWith('--coverage'))).toBe(false)
+  })
+
+  it('prints nothing without the flag, and check and baseline ignore the flag', async () => {
+    expect((await run(javaProject(), 'measure')).logs.some((l) => l.startsWith('--coverage'))).toBe(false)
+    const root = javaProject()
+    const r = await run(root, 'check')
+    expect(r.logs.some((l) => l.startsWith('--coverage'))).toBe(false)
+  })
+
+  it('prints nothing for TypeScript, which has always replaced the list silently', async () => {
+    const root = tempRoot('crap-ts-flag')
+    writeFileIn(root, 'crap/config.json', JSON.stringify({ coverage: ['coverage/coverage-final.json'] }))
+    writeFileIn(root, 'coverage/coverage-final.json', '{}')
+    writeFileIn(root, 'other.json', '{}')
+    const r = await run(root, 'measure', '--coverage', 'other.json')
+    expect(r.logs.some((l) => l.startsWith('--coverage'))).toBe(false)
+  })
+})

@@ -851,10 +851,26 @@ const measureThen = async (
   return code === 0 ? next() : code
 }
 
+const reports = (n: number): string => `${n} ${n === 1 ? 'report' : 'reports'}`
+
+const sameList = (a: readonly string[], b: readonly string[]): boolean => a.length === b.length && a.every((item, i) => item === b[i])
+
+/** Java only: `--coverage` replaces the whole configured list, and a reader should see that it did. */
+const overrideNote = (named: readonly string[], config: CrapConfig): string | null =>
+  config.language !== 'java' || sameList(named, config.coverage)
+    ? null
+    : `--coverage overrides the configured coverage: reading ${reports(named.length)} from the flag, ${config.coverage.length} configured ${config.coverage.length === 1 ? 'report' : 'reports'} ignored`
+
+const measureCommand = (args: { coveragePaths: readonly string[]; acceptUnmatched: boolean }, config: CrapConfig, repoRoot: string, io: Io): Promise<number> => {
+  const note = overrideNote(args.coveragePaths, config)
+  if (note !== null) io.log(note)
+  return runMeasureLinted(lintedOptions(args.coveragePaths, args.acceptUnmatched, repoRoot), config, io)
+}
+
 const run = async (args: ParsedArgs, config: CrapConfig, repoRoot: string, io: Io): Promise<number> => {
   switch (args.command) {
     case 'measure':
-      return runMeasureLinted(lintedOptions(args.coveragePaths, args.acceptUnmatched, repoRoot), config, io)
+      return measureCommand(args, config, repoRoot, io)
     case 'check':
       return measureThen(lintedOptions(config.coverage, false, repoRoot), config, io, () =>
         runCheck(checkOptions(args.githubActions, config), io),
